@@ -4,6 +4,7 @@ import { Button } from '@/components/common/Button';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useIndexerStore } from '@/stores/indexer.store';
 import { useDocumentsStore } from '@/stores/documents.store';
+import { messages } from '@shared/messages';
 
 interface OnboardingModalProps {
   onComplete: () => void;
@@ -22,21 +23,18 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const steps = [
     {
       icon: MessageSquare,
-      title: 'Bienvenue dans Assistant Pastoral',
-      description:
-        "Dialoguez avec vos sermons grace a l'intelligence artificielle. Configurons votre application en quelques etapes.",
+      title: messages.onboarding.welcome.title,
+      description: messages.onboarding.welcome.description,
     },
     {
       icon: Key,
-      title: 'Cle API Anthropic',
-      description:
-        "Pour utiliser l'IA, vous avez besoin d'une cle API Anthropic. Vous pouvez l'obtenir gratuitement sur console.anthropic.com",
+      title: messages.onboarding.apiKey.title,
+      description: messages.onboarding.apiKey.description,
     },
     {
       icon: FolderOpen,
-      title: 'Vos sermons',
-      description:
-        'Selectionnez le dossier contenant vos sermons. Les formats PDF, Word, Markdown et ODT sont supportes.',
+      title: messages.onboarding.sermons.title,
+      description: messages.onboarding.sermons.description,
     },
   ];
 
@@ -93,7 +91,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
           {/* Step-specific content */}
           {step === 0 && (
             <Button onClick={() => setStep(1)} className="w-full">
-              Commencer
+              {messages.onboarding.start}
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           )}
@@ -112,15 +110,15 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
               <div className="flex gap-3">
                 <Button variant="secondary" onClick={() => setStep(2)} className="flex-1">
-                  Passer
+                  {messages.common.skip}
                 </Button>
                 <Button onClick={handleApiKeySubmit} disabled={isLoading} isLoading={isLoading} className="flex-1">
-                  Continuer
+                  {messages.common.continue}
                 </Button>
               </div>
 
               <p className="text-xs text-center text-muted">
-                Vous pourrez configurer la cle API plus tard dans les parametres.
+                {messages.settings.apiKey.configLater}
               </p>
             </div>
           )}
@@ -138,18 +136,18 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                     />
                   </div>
                   <p className="text-sm text-center text-muted">
-                    {progress ? `Indexation de ${progress.currentFile} (${progress.current}/${progress.total})` : 'Preparation...'}
+                    {progress ? messages.folders.indexingFile(progress.currentFile, progress.current, progress.total) : messages.folders.preparation}
                   </p>
                 </div>
               ) : (
                 <>
                   <Button onClick={handleFolderSelect} className="w-full">
                     <FolderOpen className="w-4 h-4 mr-2" />
-                    Selectionner un dossier
+                    {messages.folders.selectFolder}
                   </Button>
 
                   <button onClick={onComplete} className="w-full text-sm text-muted hover:text-burgundy">
-                    Configurer plus tard
+                    {messages.onboarding.configureLater}
                   </button>
                 </>
               )}

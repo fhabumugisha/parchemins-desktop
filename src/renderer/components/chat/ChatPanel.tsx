@@ -6,9 +6,10 @@ import { ChatInput } from './ChatInput';
 import { WelcomeMessage } from './WelcomeMessage';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { AlertTriangle } from 'lucide-react';
+import { messages as i18n } from '@shared/messages';
 
 export function ChatPanel() {
-  const { messages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration } = useChatStore();
+  const { messages: chatMessages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration } = useChatStore();
   const { credits, fetchCredits } = useCreditsStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -19,7 +20,7 @@ export function ChatPanel() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [chatMessages]);
 
   const handleSend = async (content: string) => {
     if (!isApiConfigured) {
@@ -36,9 +37,9 @@ export function ChatPanel() {
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 text-center">
         <AlertTriangle className="w-12 h-12 text-gold mb-4" />
-        <h2 className="text-xl font-serif text-burgundy mb-2">Configuration requise</h2>
+        <h2 className="text-xl font-serif text-burgundy mb-2">{i18n.chat.configRequired}</h2>
         <p className="text-muted mb-4 max-w-md">
-          Pour utiliser l'assistant IA, vous devez configurer votre cle API Anthropic dans les parametres.
+          {i18n.chat.configRequiredDesc}
         </p>
       </div>
     );
@@ -47,16 +48,16 @@ export function ChatPanel() {
   return (
     <div className="h-full flex flex-col bg-cream">
       <div className="flex-1 overflow-y-auto p-6">
-        {messages.length === 0 ? (
+        {chatMessages.length === 0 ? (
           <WelcomeMessage onSuggestionClick={handleSend} />
         ) : (
-          <MessageList messages={messages} />
+          <MessageList messages={chatMessages} />
         )}
 
         {isLoading && (
           <div className="flex items-center gap-3 text-muted mt-4">
             <LoadingSpinner size="sm" />
-            <span>Reflexion en cours...</span>
+            <span>{i18n.chat.thinking}</span>
           </div>
         )}
 
@@ -65,18 +66,20 @@ export function ChatPanel() {
 
       {credits <= 10 && credits > 0 && (
         <div className="mx-6 mb-2 px-4 py-2 bg-gold/10 border border-gold/30 rounded-lg text-sm text-gold">
-          Attention : il vous reste seulement {credits} credit{credits > 1 ? 's' : ''}.
+          {i18n.settings.credits.warning(credits)}
         </div>
       )}
 
       {credits <= 0 && (
         <div className="mx-6 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          Credits epuises. Achetez des credits pour continuer a utiliser l'assistant.
+          {i18n.settings.credits.exhausted}
         </div>
       )}
 
       <div className="border-t border-gray-200 bg-white p-4">
-        <ChatInput onSend={handleSend} disabled={isLoading || credits <= 0} />
+        <div className="max-w-4xl xl:max-w-5xl 2xl:max-w-6xl 3xl:max-w-7xl mx-auto">
+          <ChatInput onSend={handleSend} disabled={isLoading || credits <= 0} />
+        </div>
       </div>
     </div>
   );

@@ -65,21 +65,65 @@ export async function extractPdf(filePath: string): Promise<ExtractedContent> {
     // Metadata not available
   }
 
-  // Extract text from each page
+  // Extract text from each page with better structure detection
   for (let i = 1; i <= pdfDocument.numPages; i++) {
     const page = await pdfDocument.getPage(i);
     const textContent = await page.getTextContent();
 
-    const pageText = textContent.items
-      .map((item: { str?: string }) => {
-        if ('str' in item) {
-          return item.str;
-        }
-        return '';
-      })
-      .join(' ');
+    // Group text items by their Y position to detect lines
+    interface TextItem {
+      str: string;
+      transform?: number[];
+      height?: number;
+    }
 
-    textParts.push(pageText);
+    const lines: { y: number; text: string; height: number }[] = [];
+    let currentLine = { y: 0, text: '', height: 12 };
+
+    for (const item of textContent.items as TextItem[]) {
+      if (!item.str) continue;
+
+      const y = item.transform ? Math.round(item.transform[5]) : 0;
+      const height = item.height || 12;
+
+      // If Y position changed significantly, start a new line
+      if (Math.abs(y - currentLine.y) > 5 && currentLine.text) {
+        lines.push({ ...currentLine });
+        currentLine = { y, text: item.str, height };
+      } else {
+        currentLine.text += (currentLine.text ? ' ' : '') + item.str;
+        currentLine.y = y;
+        currentLine.height = Math.max(currentLine.height, height);
+      }
+    }
+
+    if (currentLine.text) {
+      lines.push(currentLine);
+    }
+
+    // Sort lines by Y position (top to bottom)
+    lines.sort((a, b) => b.y - a.y);
+
+    // Build page text with paragraph detection
+    const pageLines: string[] = [];
+    let prevY = lines[0]?.y || 0;
+
+    for (const line of lines) {
+      const gap = prevY - line.y;
+      const text = line.text.trim();
+
+      if (!text) continue;
+
+      // Large gap = new paragraph
+      if (gap > line.height * 1.5 && pageLines.length > 0) {
+        pageLines.push('');
+      }
+
+      pageLines.push(text);
+      prevY = line.y;
+    }
+
+    textParts.push(pageLines.join('\n'));
   }
 
   // Clean up the text
@@ -87,7 +131,6 @@ export async function extractPdf(filePath: string): Promise<ExtractedContent> {
     .join('\n\n')
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s{2,}/g, ' ')
     .trim();
 
   // Parse metadata from content

@@ -15,6 +15,9 @@ const config: Config = {
       fontFamily: {
         serif: ['Georgia', 'Cambria', 'Times New Roman', 'Times', 'serif'],
       },
+      screens: {
+        '3xl': '1920px',
+      },
     },
   },
   plugins: [typography],

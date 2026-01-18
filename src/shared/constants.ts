@@ -1,4 +1,4 @@
-export const APP_NAME = 'Assistant Pastoral';
+export const APP_NAME = 'Parchemins';
 
 export const SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.md', '.txt', '.odt'];
 

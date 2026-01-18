@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getCredits, updateCredits, searchDocuments, getDocumentById } from './database.service';
+import { getCredits, updateCredits, searchDocuments, getDocumentById, getAllDocuments } from './database.service';
 import { retrieveApiKey, hasApiKey } from './secure-storage.service';
 import type { ChatResponse } from '../../shared/types';
 import { MAX_CONTEXT_DOCUMENTS, TOKENS_PER_CREDIT } from '../../shared/constants';
+import { messages as i18n } from '../../shared/messages';
+import { prompts, type SermonContext } from '../../shared/prompts';
 
 let client: Anthropic | null = null;
 
@@ -10,7 +12,7 @@ function getClient(): Anthropic {
   if (!client) {
     const apiKey = retrieveApiKey();
     if (!apiKey) {
-      throw new Error('Cle API Anthropic non configuree. Veuillez la configurer dans les parametres.');
+      throw new Error(i18n.errors.apiKeyNotConfigured);
     }
     client = new Anthropic({ apiKey });
   }
@@ -36,45 +38,28 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     throw new Error('Credits insuffisants. Veuillez acheter des credits pour continuer.');
   }
 
-  const relevantDocs = searchDocuments(request.message, MAX_CONTEXT_DOCUMENTS);
+  // Recherche par mots-clés
+  let relevantDocs = searchDocuments(request.message, MAX_CONTEXT_DOCUMENTS);
 
-  const context = relevantDocs
-    .map(
-      (doc) => `
----
-<sermon>
-<titre>${doc.title}</titre>
-${doc.date ? `<date>${doc.date}</date>` : ''}
-${doc.bible_ref ? `<reference>${doc.bible_ref}</reference>` : ''}
-<contenu>
-${doc.content.substring(0, 2500)}${doc.content.length > 2500 ? '...' : ''}
-</contenu>
-</sermon>
----`
-    )
-    .join('\n');
+  // Fallback: si aucun résultat, charger tous les documents
+  if (relevantDocs.length === 0) {
+    const allDocs = getAllDocuments().slice(0, MAX_CONTEXT_DOCUMENTS);
+    relevantDocs = allDocs.map((doc) => ({
+      ...doc,
+      rank: 0,
+      snippet: doc.content.substring(0, 200) + '...',
+    }));
+  }
 
-  const systemPrompt = `Tu es un assistant pour pasteurs protestants francophones. Tu aides a rechercher, analyser et exploiter leurs archives de sermons.
+  // Convertir les documents en SermonContext pour les prompts
+  const sermonContexts: SermonContext[] = relevantDocs.map((doc) => ({
+    title: doc.title,
+    date: doc.date,
+    bible_ref: doc.bible_ref,
+    content: doc.content,
+  }));
 
-${
-  relevantDocs.length > 0
-    ? `CONTEXTE - Sermons pertinents de l'utilisateur :
-
-${context}
-
-`
-    : ''
-}INSTRUCTIONS :
-1. Base tes reponses prioritairement sur les sermons fournis quand c'est pertinent
-2. Cite le titre du sermon quand tu t'en inspires (entre guillemets)
-3. Si l'information n'est pas dans les sermons, indique-le clairement
-4. Reponds en francais, de maniere pastorale et bienveillante
-5. Sois concis mais complet
-6. Pour les resumes, utilise des puces structurees
-7. Pour les recherches, liste les sermons pertinents avec leurs dates
-8. Pour les suggestions de preparation, propose des pistes concretes
-
-Tu es la pour aider, pas pour remplacer la reflexion theologique du pasteur.`;
+  const systemPrompt = prompts.chatSystem(sermonContexts);
 
   const messages: Anthropic.MessageParam[] = [
     ...(request.conversationHistory || []).map((msg) => ({
@@ -110,10 +95,10 @@ Tu es la pour aider, pas pour remplacer la reflexion theologique du pasteur.`;
     };
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
-      throw new Error('Cle API invalide. Verifiez vos parametres.');
+      throw new Error(i18n.errors.apiKeyInvalid);
     }
     if (error instanceof Anthropic.RateLimitError) {
-      throw new Error('Limite de requetes atteinte. Reessayez dans quelques instants.');
+      throw new Error(i18n.errors.rateLimitReached);
     }
     if (error instanceof Anthropic.APIError) {
       throw new Error(`Erreur API Anthropic: ${error.message}`);
@@ -136,13 +121,11 @@ export async function summarizeDocument(documentId: number): Promise<string> {
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1024,
-    system: 'Tu es un assistant pour pasteurs. Resume les sermons de maniere concise et structuree en francais.',
+    system: prompts.summarizeSystem,
     messages: [
       {
         role: 'user',
-        content: `Resume ce sermon intitule "${doc.title}" en 3-5 points cles :
-
-${doc.content.substring(0, 8000)}`,
+        content: prompts.summarizeUser(doc.title, doc.content),
       },
     ],
   });

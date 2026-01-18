@@ -10,6 +10,7 @@ import type { Document } from "@shared/types";
 import { useDocumentsStore } from "@/stores/documents.store";
 import { useUIStore } from "@/stores/ui.store";
 import { cn } from "@/lib/cn";
+import { messages } from "@shared/messages";
 
 interface DocumentItemProps {
   document: Document;
@@ -33,7 +34,7 @@ export function DocumentItem({ document }: DocumentItemProps) {
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Supprimer "${document.title}" de l'index ?`)) {
+    if (confirm(messages.documents.confirmDelete(document.title))) {
       await deleteDocument(document.id);
     }
   };
@@ -115,14 +116,14 @@ export function DocumentItem({ document }: DocumentItemProps) {
           <button
             onClick={handleOpenExternal}
             className="p-1 hover:bg-gray-200 rounded"
-            title="Ouvrir dans l'application"
+            title={messages.documents.openInApp}
           >
             <ExternalLink className="w-3.5 h-3.5 text-muted" />
           </button>
           <button
             onClick={handleDelete}
             className="p-1 hover:bg-red-100 rounded"
-            title="Supprimer de l'index"
+            title={messages.documents.deleteFromIndex}
           >
             <Trash2 className="w-3.5 h-3.5 text-red-500" />
           </button>

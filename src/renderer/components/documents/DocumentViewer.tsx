@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ArrowLeft,
   ExternalLink,
@@ -5,22 +6,26 @@ import {
   BookOpen,
   Hash,
   Sparkles,
+  Loader2,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { useDocumentsStore } from "@/stores/documents.store";
 import { useUIStore } from "@/stores/ui.store";
 import { useChatStore } from "@/stores/chat.store";
 import { cn } from "@/lib/cn";
+import { messages } from "@shared/messages";
 
 export function DocumentViewer() {
   const { selectedDocument, selectDocument, openDocumentExternal } =
     useDocumentsStore();
   const { setActiveView, fontSize } = useUIStore();
   const { summarizeDocument } = useChatStore();
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   if (!selectedDocument) {
     return (
       <div className="h-full flex items-center justify-center text-muted">
-        Selectionnez un document
+        {messages.documents.selectDocument}
       </div>
     );
   }
@@ -35,13 +40,18 @@ export function DocumentViewer() {
   };
 
   const handleSummarize = async () => {
-    await summarizeDocument(selectedDocument.id, selectedDocument.title);
-    setActiveView("chat");
+    setIsSummarizing(true);
+    try {
+      await summarizeDocument(selectedDocument.id, selectedDocument.title);
+      setActiveView("chat");
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   // Format date
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "Date inconnue";
+    if (!dateStr) return messages.documents.unknownDate;
     try {
       const date = new Date(dateStr);
       return date.toLocaleDateString("fr-FR", {
@@ -72,23 +82,28 @@ export function DocumentViewer() {
             className="flex items-center gap-2 text-muted hover:text-burgundy transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Retour</span>
+            <span>{messages.common.back}</span>
           </button>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleSummarize}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gold text-white rounded-lg hover:bg-gold/90 transition-colors"
+              disabled={isSummarizing}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gold text-white rounded-lg hover:bg-gold/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>Resumer</span>
+              {isSummarizing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              <span>{isSummarizing ? messages.chat.thinking : messages.documents.summarize}</span>
             </button>
             <button
               onClick={handleOpenExternal}
               className="flex items-center gap-2 px-3 py-1.5 text-sm bg-burgundy text-white rounded-lg hover:bg-burgundy/90 transition-colors"
             >
               <ExternalLink className="w-4 h-4" />
-              <span>Ouvrir le fichier</span>
+              <span>{messages.documents.openFile}</span>
             </button>
           </div>
         </div>
@@ -112,7 +127,7 @@ export function DocumentViewer() {
           )}
           <span className="flex items-center gap-1.5">
             <Hash className="w-4 h-4" />
-            {selectedDocument.word_count} mots
+            {selectedDocument.word_count} {messages.documents.words}
           </span>
         </div>
       </div>
@@ -125,8 +140,8 @@ export function DocumentViewer() {
             fontSizeClasses[fontSize]
           )}
         >
-          <div className="prose prose-burgundy max-w-none whitespace-pre-wrap">
-            {selectedDocument.content}
+          <div className="prose prose-burgundy max-w-none">
+            <ReactMarkdown>{selectedDocument.content}</ReactMarkdown>
           </div>
         </div>
       </div>

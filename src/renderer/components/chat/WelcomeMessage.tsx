@@ -1,4 +1,5 @@
 import { MessageSquare, Search, FileText, Sparkles } from 'lucide-react';
+import { messages } from '@shared/messages';
 
 interface WelcomeMessageProps {
   onSuggestionClick: (suggestion: string) => void;
@@ -6,10 +7,10 @@ interface WelcomeMessageProps {
 
 export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
   const suggestions = [
-    { icon: Search, text: 'Trouve mes sermons sur la grace' },
-    { icon: FileText, text: 'Resume mon dernier sermon' },
-    { icon: Sparkles, text: 'Quels themes pour Paques ?' },
-    { icon: MessageSquare, text: 'Ai-je deja parle du pardon ?' },
+    { icon: Search, text: messages.chat.welcome.suggestions.searchGrace },
+    { icon: FileText, text: messages.chat.welcome.suggestions.summarizeLast },
+    { icon: Sparkles, text: messages.chat.welcome.suggestions.easterThemes },
+    { icon: MessageSquare, text: messages.chat.welcome.suggestions.forgivenessCheck },
   ];
 
   return (
@@ -18,11 +19,10 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
         <MessageSquare className="w-8 h-8 text-burgundy" />
       </div>
 
-      <h2 className="text-2xl font-serif text-burgundy mb-3">Bienvenue, cher pasteur</h2>
+      <h2 className="text-2xl font-serif text-burgundy mb-3">{messages.chat.welcome.title}</h2>
 
       <p className="text-muted mb-8 max-w-md mx-auto">
-        Posez-moi vos questions sur vos sermons. Je peux rechercher, resumer, comparer et vous aider a preparer vos
-        predications.
+        {messages.chat.welcome.description}
       </p>
 
       <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">

@@ -1,5 +1,6 @@
 import { useDocumentsStore } from "@/stores/documents.store";
 import { DocumentItem } from "./DocumentItem";
+import { messages } from "@shared/messages";
 
 export function DocumentList() {
   const { documents, searchResults, searchQuery, isLoading } =
@@ -8,13 +9,13 @@ export function DocumentList() {
   const displayedDocs = searchQuery ? searchResults : documents;
 
   if (isLoading) {
-    return <div className="p-4 text-center text-muted">Chargement...</div>;
+    return <div className="p-4 text-center text-muted">{messages.common.loading}</div>;
   }
 
   if (displayedDocs.length === 0) {
     return (
       <div className="p-4 text-center text-muted text-sm">
-        {searchQuery ? "Aucun resultat" : "Aucun document indexe"}
+        {searchQuery ? messages.documents.noResult : messages.documents.noDocumentIndexed}
       </div>
     );
   }

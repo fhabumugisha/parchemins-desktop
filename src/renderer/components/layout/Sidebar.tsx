@@ -11,6 +11,7 @@ import { useDocumentsStore } from "@/stores/documents.store";
 import { useIndexerStore } from "@/stores/indexer.store";
 import { DocumentList } from "@/components/documents/DocumentList";
 import { SearchInput } from "@/components/common/SearchInput";
+import { messages } from "@shared/messages";
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, setActiveView } = useUIStore();
@@ -36,14 +37,14 @@ export function Sidebar() {
         <button
           onClick={() => setActiveView("chat")}
           className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
-          title="Chat"
+          title={messages.nav.chat}
         >
           <MessageSquare className="w-5 h-5 text-muted" />
         </button>
         <button
           onClick={() => setActiveView("document")}
           className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
-          title="Documents"
+          title={messages.nav.documents}
         >
           <FileText className="w-5 h-5 text-muted" />
         </button>
@@ -65,7 +66,7 @@ export function Sidebar() {
           value={searchQuery}
           onChange={search}
           onClear={clearSearch}
-          placeholder="Rechercher dans les sermons..."
+          placeholder={messages.folders.searchInSermons}
         />
       </div>
 
@@ -74,14 +75,14 @@ export function Sidebar() {
         {documents.length > 0 ? (
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted">
-              {documents.length} sermon{documents.length > 1 ? "s" : ""}
+              {messages.documents.sermonsCount(documents.length)}
             </span>
             <button
               onClick={handleSelectFolder}
               disabled={isIndexing}
               className="text-sm text-burgundy hover:underline disabled:opacity-50"
             >
-              {isIndexing ? "Indexation..." : "Changer de dossier"}
+              {isIndexing ? messages.folders.indexing : messages.folders.changeFolder}
             </button>
           </div>
         ) : (
@@ -92,7 +93,7 @@ export function Sidebar() {
           >
             <FolderOpen className="w-4 h-4" />
             <span>
-              {isIndexing ? "Indexation..." : "Selectionner un dossier"}
+              {isIndexing ? messages.folders.indexing : messages.folders.selectFolder}
             </span>
           </button>
         )}
@@ -110,7 +111,7 @@ export function Sidebar() {
           className="w-full flex items-center justify-center gap-2 py-2 text-sm text-muted hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
-          <span>Reduire</span>
+          <span>{messages.common.reduce}</span>
         </button>
       </div>
     </aside>

@@ -16,7 +16,8 @@ type ProgressCallback = (progress: IndexingProgress) => void;
 
 export async function indexFolder(
   folderPath: string,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  forceReindex = false
 ): Promise<IndexingResult> {
   const result: IndexingResult = { added: 0, updated: 0, removed: 0, errors: [] };
 
@@ -37,7 +38,7 @@ export async function indexFolder(
     });
 
     try {
-      const status = await indexFile(filePath);
+      const status = await indexFile(filePath, forceReindex);
       if (status === 'added') result.added++;
       else if (status === 'updated') result.updated++;
     } catch (error) {
@@ -53,7 +54,14 @@ export async function indexFolder(
   return result;
 }
 
-async function indexFile(filePath: string): Promise<'added' | 'updated' | 'unchanged'> {
+export async function forceReindexFolder(
+  folderPath: string,
+  onProgress?: ProgressCallback
+): Promise<IndexingResult> {
+  return indexFolder(folderPath, onProgress, true);
+}
+
+async function indexFile(filePath: string, forceReindex = false): Promise<'added' | 'updated' | 'unchanged'> {
   // Calculate file hash
   const fileBuffer = await fs.readFile(filePath);
   const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
@@ -61,7 +69,7 @@ async function indexFile(filePath: string): Promise<'added' | 'updated' | 'uncha
   // Check if document already exists
   const existing = getDocumentByPath(filePath);
 
-  if (existing) {
+  if (existing && !forceReindex) {
     // If hash matches, no update needed
     if (existing.hash === hash) {
       return 'unchanged';

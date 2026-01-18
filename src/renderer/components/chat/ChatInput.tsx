@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { messages } from '@shared/messages';
 
 interface ChatInputProps {
   onSend: (content: string) => void;
@@ -41,7 +42,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Posez votre question sur vos sermons..."
+        placeholder={messages.chat.inputPlaceholder}
         rows={1}
         className={cn(
           'flex-1 resize-none rounded-xl border border-gray-200 px-4 py-3',

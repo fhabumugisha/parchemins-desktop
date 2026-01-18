@@ -14,6 +14,7 @@ import {
   isEncryptionAvailable,
 } from '../services/secure-storage.service';
 import { resetClaudeClient, testApiKey } from '../services/claude.service';
+import { messages } from '../../shared/messages';
 
 export function registerSettingsHandlers(): void {
   // Get single setting
@@ -42,7 +43,7 @@ export function registerSettingsHandlers(): void {
     // Test the key first
     const isValid = await testApiKey(apiKey);
     if (!isValid) {
-      throw new Error('Cle API invalide. Verifiez et reessayez.');
+      throw new Error(messages.errors.apiKeyInvalid);
     }
 
     storeApiKey(apiKey);

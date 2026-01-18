@@ -6,8 +6,10 @@ import {
   deleteDocument,
   getCorpusStats,
   setSetting,
+  getSetting,
 } from '../services/database.service';
 import { startWatcher } from '../services/watcher.service';
+import { forceReindexFolder } from '../services/indexer.service';
 import type { IndexingProgress } from '../../shared/types';
 
 export function registerDocumentsHandlers(): void {
@@ -69,6 +71,24 @@ export function registerDocumentsHandlers(): void {
     // Start watcher (which does initial indexation)
     const result = await startWatcher(folderPath, onProgress);
 
+    return result;
+  });
+
+  // Force re-index all documents
+  ipcMain.handle(IPC_CHANNELS.INDEXER_FORCE_REINDEX, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const folderPath = getSetting('sermons_folder');
+
+    if (!folderPath) {
+      return { added: 0, updated: 0, removed: 0, errors: ['No folder configured'] };
+    }
+
+    // Progress callback
+    const onProgress = (progress: IndexingProgress) => {
+      window?.webContents.send(IPC_CHANNELS.INDEXER_PROGRESS, progress);
+    };
+
+    const result = await forceReindexFolder(folderPath, onProgress);
     return result;
   });
 }

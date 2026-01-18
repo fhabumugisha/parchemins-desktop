@@ -7,7 +7,7 @@ export function createWindow(): BrowserWindow {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'Assistant Pastoral',
+    title: 'Parchemins',
     backgroundColor: '#FAF7F2',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 15, y: 15 },

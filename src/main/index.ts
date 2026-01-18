@@ -14,7 +14,7 @@ if (require('electron-squirrel-startup')) {
 let _mainWindow: BrowserWindow | null = null;
 
 async function bootstrap(): Promise<void> {
-  logger.info('Starting Assistant Pastoral...');
+  logger.info('Starting Parchemins...');
 
   // Initialize database first
   await initDatabase();

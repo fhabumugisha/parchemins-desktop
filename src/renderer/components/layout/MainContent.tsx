@@ -3,6 +3,7 @@ import { useDocumentsStore } from '@/stores/documents.store';
 import { DocumentViewer } from '@/components/documents/DocumentViewer';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
+import { messages } from '@shared/messages';
 
 export function MainContent() {
   const { activeView } = useUIStore();
@@ -22,7 +23,7 @@ export function MainContent() {
       if (!selectedDocument) {
         return (
           <div className="h-full flex items-center justify-center text-muted">
-            <p>Selectionnez un document dans la liste</p>
+            <p>{messages.documents.selectDocumentInList}</p>
           </div>
         );
       }

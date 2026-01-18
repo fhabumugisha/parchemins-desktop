@@ -1,8 +1,10 @@
-import { User, Bot, AlertCircle, FileText } from 'lucide-react';
+import { useState } from 'react';
+import { User, Bot, AlertCircle, FileText, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/cn';
 import { useDocumentsStore } from '@/stores/documents.store';
 import { useUIStore } from '@/stores/ui.store';
+import { messages } from '@shared/messages';
 
 interface Message {
   id: string;
@@ -20,6 +22,7 @@ interface MessageBubbleProps {
 export function MessageBubble({ message }: MessageBubbleProps) {
   const { selectDocument } = useDocumentsStore();
   const { setActiveView } = useUIStore();
+  const [copied, setCopied] = useState(false);
   const isUser = message.role === 'user';
 
   const handleSourceClick = async (sourceId: number) => {
@@ -28,6 +31,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       selectDocument(doc);
       setActiveView('document');
     }
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -49,7 +58,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
       <div
         className={cn(
-          'max-w-[80%] rounded-2xl px-4 py-3',
+          'max-w-[95%] rounded-2xl px-4 py-3',
           isUser
             ? 'bg-burgundy text-white'
             : message.isError
@@ -80,7 +89,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         {message.sources && message.sources.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-200">
-            <p className="text-xs text-muted mb-2">Sources utilisees :</p>
+            <p className="text-xs text-muted mb-2">{messages.chat.sourcesUsed}</p>
             <div className="space-y-1">
               {message.sources.map((source) => (
                 <button
@@ -96,11 +105,32 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        <div className={cn('text-xs mt-2', isUser ? 'text-white/70' : 'text-muted')}>
-          {message.timestamp.toLocaleTimeString('fr-FR', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
+        <div className={cn('flex items-center justify-between mt-2', isUser ? 'text-white/70' : 'text-muted')}>
+          <span className="text-xs">
+            {message.timestamp.toLocaleTimeString('fr-FR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+          {!isUser && !message.isError && (
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 text-xs hover:text-burgundy transition-colors"
+              title={messages.common.copy}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-green-600">{messages.common.copied}</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{messages.common.copy}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
