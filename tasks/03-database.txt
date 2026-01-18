@@ -1,0 +1,851 @@
+TASK 03 - DATABASE AND INDEXATION
+
+You are continuing development of "Assistant Pastoral", an Electron desktop application. This task focuses on implementing the SQLite database layer and document indexation service.
+
+PREREQUISITES
+
+Task 01 (Foundation) and Task 02 (Extraction) must be completed. You should have:
+- Basic project structure with Electron, React, TypeScript
+- Text extractors for PDF, DOCX, ODT, and Markdown
+
+OVERVIEW
+
+Implement:
+1. DatabaseService - SQLite database with FTS5 full-text search
+2. IndexerService - Document indexation with hash-based change detection
+3. WatcherService - File system monitoring for automatic re-indexation
+4. IPC handlers for indexation operations
+
+DEPENDENCIES
+
+- better-sqlite3: 12.6.2 (already installed)
+- chokidar: 5.0.0 (already installed, ESM-only, Node 20+ required)
+- crypto (Node.js built-in for MD5 hashing)
+
+DATABASE SERVICE (src/main/services/database.service.ts)
+
+Create a singleton database service:
+
+import Database from "better-sqlite3";
+import path from "path";
+import { app } from "electron";
+import type { Document, Conversation, Message } from "../../shared/types";
+
+let db: Database.Database | null = null;
+
+export function getDb(): Database.Database {
+  if (!db) {
+    throw new Error("Database not initialized. Call initDatabase first.");
+  }
+  return db;
+}
+
+export async function initDatabase(): Promise<void> {
+  const dbPath = path.join(app.getPath("userData"), "sermons.db");
+  
+  db = new Database(dbPath);
+  
+  // Performance optimizations
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("synchronous = NORMAL");
+  
+  createTables();
+  
+  console.log("Database initialized at:", dbPath);
+}
+
+function createTables(): void {
+  getDb().exec(`
+    -- Documents table
+    CREATE TABLE IF NOT EXISTS documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      date TEXT,
+      bible_ref TEXT,
+      word_count INTEGER DEFAULT 0,
+      hash TEXT NOT NULL,
+      indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- FTS5 virtual table for full-text search
+    CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+      title,
+      content,
+      bible_ref,
+      content='documents',
+      content_rowid='id',
+      tokenize='unicode61 remove_diacritics 2'
+    );
+    
+    -- Triggers to keep FTS5 synchronized with documents table
+    CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+      INSERT INTO documents_fts(rowid, title, content, bible_ref)
+      VALUES (new.id, new.title, new.content, new.bible_ref);
+    END;
+    
+    CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+      INSERT INTO documents_fts(documents_fts, rowid, title, content, bible_ref)
+      VALUES ('delete', old.id, old.title, old.content, old.bible_ref);
+    END;
+    
+    CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+      INSERT INTO documents_fts(documents_fts, rowid, title, content, bible_ref)
+      VALUES ('delete', old.id, old.title, old.content, old.bible_ref);
+      INSERT INTO documents_fts(rowid, title, content, bible_ref)
+      VALUES (new.id, new.title, new.content, new.bible_ref);
+    END;
+    
+    -- Conversations table
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Messages table
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      tokens_used INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+    
+    -- Settings table (key-value store)
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    
+    -- Credits table (single row)
+    CREATE TABLE IF NOT EXISTS credits (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      balance INTEGER DEFAULT 100,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Initialize credits if not exists
+    INSERT OR IGNORE INTO credits (id, balance) VALUES (1, 100);
+    
+    -- Create indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
+    CREATE INDEX IF NOT EXISTS idx_documents_date ON documents(date);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+  `);
+}
+
+DOCUMENT CRUD OPERATIONS
+
+Add to database.service.ts:
+
+// Get all documents
+export function getAllDocuments(): Document[] {
+  return getDb()
+    .prepare("SELECT * FROM documents ORDER BY date DESC, title ASC")
+    .all() as Document[];
+}
+
+// Get document by ID
+export function getDocumentById(id: number): Document | undefined {
+  return getDb()
+    .prepare("SELECT * FROM documents WHERE id = ?")
+    .get(id) as Document | undefined;
+}
+
+// Get document by path
+export function getDocumentByPath(filePath: string): Document | undefined {
+  return getDb()
+    .prepare("SELECT * FROM documents WHERE path = ?")
+    .get(filePath) as Document | undefined;
+}
+
+// Insert new document
+export function insertDocument(doc: Omit<Document, "id" | "indexed_at" | "updated_at">): number {
+  const result = getDb()
+    .prepare(`
+      INSERT INTO documents (path, title, content, date, bible_ref, word_count, hash)
+      VALUES (@path, @title, @content, @date, @bible_ref, @word_count, @hash)
+    `)
+    .run(doc);
+  return result.lastInsertRowid as number;
+}
+
+// Update existing document
+export function updateDocument(id: number, doc: Partial<Document>): void {
+  const fields = Object.keys(doc)
+    .filter(k => k !== "id" && k !== "indexed_at")
+    .map(k => `${k} = @${k}`)
+    .join(", ");
+  
+  if (fields.length === 0) return;
+  
+  getDb()
+    .prepare(`UPDATE documents SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = @id`)
+    .run({ ...doc, id });
+}
+
+// Delete document
+export function deleteDocument(id: number): void {
+  getDb().prepare("DELETE FROM documents WHERE id = ?").run(id);
+}
+
+// Get document count
+export function getDocumentCount(): number {
+  const result = getDb()
+    .prepare("SELECT COUNT(*) as count FROM documents")
+    .get() as { count: number };
+  return result.count;
+}
+
+// Get corpus statistics
+export function getCorpusStats(): { totalDocuments: number; totalWords: number; oldestDate: string | null; newestDate: string | null } {
+  const result = getDb()
+    .prepare(`
+      SELECT 
+        COUNT(*) as totalDocuments,
+        COALESCE(SUM(word_count), 0) as totalWords,
+        MIN(date) as oldestDate,
+        MAX(date) as newestDate
+      FROM documents
+    `)
+    .get() as any;
+  return result;
+}
+
+SEARCH OPERATIONS
+
+Add to database.service.ts:
+
+// Full-text search with BM25 ranking
+export function searchDocuments(query: string, limit = 20): (Document & { rank: number; snippet: string })[] {
+  // Escape special FTS5 characters to prevent syntax errors
+  const escapedQuery = query
+    .replace(/['"]/g, "")
+    .replace(/[(){}[\]^~*?:\\]/g, " ")
+    .trim();
+  
+  if (!escapedQuery) return [];
+  
+  // Use prefix matching for better results
+  const searchTerms = escapedQuery.split(/\s+/).map(term => `${term}*`).join(" ");
+  
+  return getDb()
+    .prepare(`
+      SELECT 
+        d.*,
+        bm25(documents_fts) AS rank,
+        snippet(documents_fts, 1, '<mark>', '</mark>', '...', 32) AS snippet
+      FROM documents_fts
+      JOIN documents d ON d.id = documents_fts.rowid
+      WHERE documents_fts MATCH ?
+      ORDER BY rank
+      LIMIT ?
+    `)
+    .all(searchTerms, limit) as (Document & { rank: number; snippet: string })[];
+}
+
+// Search by Bible reference
+export function searchByBibleRef(ref: string): Document[] {
+  return getDb()
+    .prepare("SELECT * FROM documents WHERE bible_ref LIKE ? ORDER BY date DESC")
+    .all(`%${ref}%`) as Document[];
+}
+
+CONVERSATION OPERATIONS
+
+Add to database.service.ts:
+
+// Create conversation
+export function createConversation(title?: string): number {
+  const result = getDb()
+    .prepare("INSERT INTO conversations (title) VALUES (?)")
+    .run(title || null);
+  return result.lastInsertRowid as number;
+}
+
+// Get conversation
+export function getConversation(id: number): Conversation | undefined {
+  return getDb()
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(id) as Conversation | undefined;
+}
+
+// Get all conversations
+export function getAllConversations(): Conversation[] {
+  return getDb()
+    .prepare("SELECT * FROM conversations ORDER BY updated_at DESC")
+    .all() as Conversation[];
+}
+
+// Get conversation messages
+export function getConversationMessages(conversationId: number): Message[] {
+  return getDb()
+    .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC")
+    .all(conversationId) as Message[];
+}
+
+// Add message to conversation
+export function addMessage(conversationId: number, role: "user" | "assistant", content: string, tokensUsed = 0): number {
+  const result = getDb()
+    .prepare(`
+      INSERT INTO messages (conversation_id, role, content, tokens_used)
+      VALUES (?, ?, ?, ?)
+    `)
+    .run(conversationId, role, content, tokensUsed);
+  
+  // Update conversation timestamp
+  getDb()
+    .prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(conversationId);
+  
+  return result.lastInsertRowid as number;
+}
+
+// Delete conversation (messages cascade delete)
+export function deleteConversation(id: number): void {
+  getDb().prepare("DELETE FROM conversations WHERE id = ?").run(id);
+}
+
+CREDITS OPERATIONS
+
+Add to database.service.ts:
+
+// Get current credit balance
+export function getCredits(): number {
+  const result = getDb()
+    .prepare("SELECT balance FROM credits WHERE id = 1")
+    .get() as { balance: number } | undefined;
+  return result?.balance ?? 0;
+}
+
+// Update credits (add or subtract)
+export function updateCredits(delta: number): number {
+  getDb()
+    .prepare("UPDATE credits SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1")
+    .run(delta);
+  return getCredits();
+}
+
+// Set credits to specific value
+export function setCredits(amount: number): void {
+  getDb()
+    .prepare("UPDATE credits SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1")
+    .run(amount);
+}
+
+SETTINGS OPERATIONS
+
+Add to database.service.ts:
+
+// Get setting
+export function getSetting(key: string): string | undefined {
+  const result = getDb()
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return result?.value;
+}
+
+// Set setting
+export function setSetting(key: string, value: string): void {
+  getDb()
+    .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+    .run(key, value);
+}
+
+// Get all settings
+export function getAllSettings(): Record<string, string> {
+  const rows = getDb()
+    .prepare("SELECT key, value FROM settings")
+    .all() as { key: string; value: string }[];
+  return Object.fromEntries(rows.map(r => [r.key, r.value]));
+}
+
+// Delete setting
+export function deleteSetting(key: string): void {
+  getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
+}
+
+CLOSE DATABASE
+
+export function closeDatabase(): void {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
+INDEXER SERVICE (src/main/services/indexer.service.ts)
+
+Create the indexer service:
+
+import fs from "fs/promises";
+import path from "path";
+import crypto from "crypto";
+import {
+  insertDocument,
+  getDocumentByPath,
+  updateDocument,
+  deleteDocument,
+  getAllDocuments
+} from "./database.service";
+import { extractText } from "../extractors";
+import { SUPPORTED_EXTENSIONS } from "../../shared/constants";
+
+interface IndexingProgress {
+  total: number;
+  current: number;
+  currentFile: string;
+}
+
+interface IndexingResult {
+  added: number;
+  updated: number;
+  removed: number;
+  errors: string[];
+}
+
+type ProgressCallback = (progress: IndexingProgress) => void;
+
+// Index entire folder
+export async function indexFolder(
+  folderPath: string,
+  onProgress?: ProgressCallback
+): Promise<IndexingResult> {
+  const result: IndexingResult = { added: 0, updated: 0, removed: 0, errors: [] };
+  
+  // Get all supported files recursively
+  const files = await getFilesRecursive(folderPath);
+  const supportedFiles = files.filter(f =>
+    SUPPORTED_EXTENSIONS.includes(path.extname(f).toLowerCase())
+  );
+  
+  // Index each file
+  for (let i = 0; i < supportedFiles.length; i++) {
+    const filePath = supportedFiles[i];
+    
+    onProgress?.({
+      total: supportedFiles.length,
+      current: i + 1,
+      currentFile: path.basename(filePath)
+    });
+    
+    try {
+      const status = await indexFile(filePath);
+      if (status === "added") result.added++;
+      else if (status === "updated") result.updated++;
+    } catch (error) {
+      const errorMessage = `${path.basename(filePath)}: ${(error as Error).message}`;
+      result.errors.push(errorMessage);
+      console.error("Indexing error:", errorMessage);
+    }
+  }
+  
+  // Remove deleted documents
+  result.removed = await removeDeletedDocuments(folderPath);
+  
+  return result;
+}
+
+// Index single file
+async function indexFile(filePath: string): Promise<"added" | "updated" | "unchanged"> {
+  // Calculate file hash
+  const fileBuffer = await fs.readFile(filePath);
+  const hash = crypto.createHash("md5").update(fileBuffer).digest("hex");
+  
+  // Check if document already exists
+  const existing = getDocumentByPath(filePath);
+  
+  if (existing) {
+    // If hash matches, no update needed
+    if (existing.hash === hash) {
+      return "unchanged";
+    }
+  }
+  
+  // Extract text and metadata
+  const extracted = await extractText(filePath);
+  
+  // Calculate word count
+  const wordCount = extracted.content.split(/\s+/).filter(w => w.length > 0).length;
+  
+  // Prepare document data
+  const doc = {
+    path: filePath,
+    title: extracted.title || path.basename(filePath, path.extname(filePath)),
+    content: extracted.content,
+    date: extracted.date || null,
+    bible_ref: extracted.bibleRef || null,
+    word_count: wordCount,
+    hash
+  };
+  
+  if (existing) {
+    updateDocument(existing.id, doc);
+    return "updated";
+  } else {
+    insertDocument(doc);
+    return "added";
+  }
+}
+
+// Get files recursively from directory
+async function getFilesRecursive(dir: string): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+  
+  for (const entry of entries) {
+    // Skip hidden files and directories
+    if (entry.name.startsWith(".")) continue;
+    
+    const fullPath = path.join(dir, entry.name);
+    
+    if (entry.isDirectory()) {
+      files.push(...await getFilesRecursive(fullPath));
+    } else {
+      files.push(fullPath);
+    }
+  }
+  
+  return files;
+}
+
+// Remove documents whose files no longer exist
+async function removeDeletedDocuments(folderPath: string): Promise<number> {
+  const documents = getAllDocuments();
+  let removed = 0;
+  
+  for (const doc of documents) {
+    // Only check documents within the watched folder
+    if (!doc.path.startsWith(folderPath)) continue;
+    
+    try {
+      await fs.access(doc.path);
+    } catch {
+      // File no longer exists
+      deleteDocument(doc.id);
+      removed++;
+    }
+  }
+  
+  return removed;
+}
+
+// Re-index single file (for watcher)
+export async function reindexFile(filePath: string): Promise<void> {
+  try {
+    await indexFile(filePath);
+  } catch (error) {
+    console.error("Failed to reindex file:", filePath, error);
+  }
+}
+
+// Remove file from index
+export function removeFileFromIndex(filePath: string): void {
+  const doc = getDocumentByPath(filePath);
+  if (doc) {
+    deleteDocument(doc.id);
+  }
+}
+
+WATCHER SERVICE (src/main/services/watcher.service.ts)
+
+Create file watcher service using chokidar v5:
+
+import chokidar from "chokidar";
+import path from "path";
+import { getSetting } from "./database.service";
+import { reindexFile, removeFileFromIndex } from "./indexer.service";
+import { SUPPORTED_EXTENSIONS } from "../../shared/constants";
+
+let watcher: chokidar.FSWatcher | null = null;
+
+// Initialize watcher for configured folder
+export async function initWatcher(): Promise<void> {
+  const folderPath = getSetting("sermons_folder");
+  
+  if (!folderPath) {
+    console.log("No sermon folder configured, watcher not started");
+    return;
+  }
+  
+  await startWatcher(folderPath);
+}
+
+// Start watching a folder
+export async function startWatcher(folderPath: string): Promise<void> {
+  // Stop existing watcher if any
+  await stopWatcher();
+  
+  console.log("Starting file watcher for:", folderPath);
+  
+  watcher = chokidar.watch(folderPath, {
+    persistent: true,
+    ignoreInitial: true, // Don't emit events for existing files on startup
+    ignored: (filePath, stats) => {
+      // Ignore hidden files
+      if (path.basename(filePath).startsWith(".")) return true;
+      // For files (not directories), check extension
+      if (stats?.isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        return !SUPPORTED_EXTENSIONS.includes(ext);
+      }
+      return false;
+    },
+    depth: 99, // Watch subdirectories
+    awaitWriteFinish: {
+      stabilityThreshold: 2000, // Wait 2 seconds after last write
+      pollInterval: 100
+    }
+  });
+  
+  watcher
+    .on("add", async (filePath) => {
+      console.log("File added:", filePath);
+      await reindexFile(filePath);
+    })
+    .on("change", async (filePath) => {
+      console.log("File changed:", filePath);
+      await reindexFile(filePath);
+    })
+    .on("unlink", (filePath) => {
+      console.log("File removed:", filePath);
+      removeFileFromIndex(filePath);
+    })
+    .on("error", (error) => {
+      console.error("Watcher error:", error);
+    })
+    .on("ready", () => {
+      console.log("File watcher ready");
+    });
+}
+
+// Stop watcher
+export async function stopWatcher(): Promise<void> {
+  if (watcher) {
+    await watcher.close();
+    watcher = null;
+    console.log("File watcher stopped");
+  }
+}
+
+// Check if watcher is running
+export function isWatcherRunning(): boolean {
+  return watcher !== null;
+}
+
+IPC HANDLERS
+
+Create src/main/ipc/documents.ipc.ts:
+
+import { ipcMain, dialog, shell, BrowserWindow } from "electron";
+import { IPC_CHANNELS } from "../../shared/ipc-channels";
+import * as db from "../services/database.service";
+import { indexFolder } from "../services/indexer.service";
+import { startWatcher } from "../services/watcher.service";
+
+export function registerDocumentsHandlers(): void {
+  // Get all documents
+  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_GET_ALL, async () => {
+    return db.getAllDocuments();
+  });
+  
+  // Get document by ID
+  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_GET_BY_ID, async (_, id: number) => {
+    return db.getDocumentById(id);
+  });
+  
+  // Delete document
+  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_DELETE, async (_, id: number) => {
+    db.deleteDocument(id);
+    return { success: true };
+  });
+  
+  // Open document in default application
+  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_OPEN_EXTERNAL, async (_, id: number) => {
+    const doc = db.getDocumentById(id);
+    if (doc) {
+      await shell.openPath(doc.path);
+      return { success: true };
+    }
+    return { success: false, error: "Document not found" };
+  });
+  
+  // Select folder dialog
+  ipcMain.handle(IPC_CHANNELS.INDEXER_SELECT_FOLDER, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+      title: "Selectionnez votre dossier de sermons"
+    });
+    
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    
+    return result.filePaths[0];
+  });
+  
+  // Index folder
+  ipcMain.handle(IPC_CHANNELS.INDEXER_INDEX_FOLDER, async (event, folderPath: string) => {
+    const result = await indexFolder(folderPath, (progress) => {
+      // Send progress to renderer
+      event.sender.send(IPC_CHANNELS.INDEXER_PROGRESS, progress);
+    });
+    
+    // Save folder path in settings
+    db.setSetting("sermons_folder", folderPath);
+    
+    // Start watching the folder
+    await startWatcher(folderPath);
+    
+    return result;
+  });
+}
+
+Create src/main/ipc/search.ipc.ts:
+
+import { ipcMain } from "electron";
+import { IPC_CHANNELS } from "../../shared/ipc-channels";
+import * as db from "../services/database.service";
+
+export function registerSearchHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.SEARCH_QUERY, async (_, query: string) => {
+    return db.searchDocuments(query);
+  });
+}
+
+Create src/main/ipc/settings.ipc.ts:
+
+import { ipcMain } from "electron";
+import { IPC_CHANNELS } from "../../shared/ipc-channels";
+import * as db from "../services/database.service";
+
+export function registerSettingsHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, async (_, key: string) => {
+    return db.getSetting(key);
+  });
+  
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, async (_, key: string, value: string) => {
+    db.setSetting(key, value);
+    return { success: true };
+  });
+  
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_ALL, async () => {
+    return db.getAllSettings();
+  });
+  
+  ipcMain.handle(IPC_CHANNELS.CREDITS_GET, async () => {
+    return db.getCredits();
+  });
+  
+  ipcMain.handle(IPC_CHANNELS.CREDITS_PURCHASE, async (_, amount: number) => {
+    // In a real app, this would involve payment processing
+    // For now, just add the credits
+    return db.updateCredits(amount);
+  });
+}
+
+Update src/main/ipc/index.ts:
+
+import { registerDocumentsHandlers } from "./documents.ipc";
+import { registerSearchHandlers } from "./search.ipc";
+import { registerSettingsHandlers } from "./settings.ipc";
+
+export function registerIpcHandlers(): void {
+  registerDocumentsHandlers();
+  registerSearchHandlers();
+  registerSettingsHandlers();
+  console.log("IPC handlers registered");
+}
+
+UPDATE MAIN PROCESS
+
+Update src/main/index.ts to initialize database and watcher:
+
+import { app, BrowserWindow } from "electron";
+import { createWindow } from "./window";
+import { initDatabase, closeDatabase } from "./services/database.service";
+import { registerIpcHandlers } from "./ipc";
+import { initWatcher, stopWatcher } from "./services/watcher.service";
+
+// Handle Squirrel events for Windows
+if (require("electron-squirrel-startup")) {
+  app.quit();
+}
+
+let mainWindow: BrowserWindow | null = null;
+
+async function bootstrap() {
+  // Initialize database first
+  await initDatabase();
+  
+  // Register IPC handlers
+  registerIpcHandlers();
+  
+  // Create main window
+  mainWindow = createWindow();
+  
+  // Initialize file watcher (if folder is configured)
+  await initWatcher();
+}
+
+app.whenReady().then(bootstrap);
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    mainWindow = createWindow();
+  }
+});
+
+app.on("before-quit", async () => {
+  await stopWatcher();
+  closeDatabase();
+});
+
+UNIT TESTS
+
+Create tests for database operations:
+
+tests/main/services/database.service.test.ts:
+- Test document CRUD operations
+- Test FTS5 search functionality
+- Test credits management
+- Test settings storage
+
+tests/main/services/indexer.service.test.ts:
+- Test file indexing
+- Test hash-based change detection
+- Test recursive folder scanning
+- Test handling of unsupported files
+
+VERIFICATION
+
+After implementation:
+1. npm run dev starts without database errors
+2. Can select a folder and index documents
+3. Documents appear in database with correct metadata
+4. FTS5 search returns relevant results
+5. File changes are detected by watcher
+6. Credits and settings are persisted
+7. npm run typecheck passes
+8. npm run test passes
+
+DO NOT implement:
+- AI integration (task 05)
+- Chat functionality (task 05)
+- Settings UI (task 06)
+- Document list UI (task 04)
+
+Focus only on database operations, indexation, and file watching.

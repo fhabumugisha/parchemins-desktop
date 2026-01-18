@@ -1,0 +1,411 @@
+TASK 02 - TEXT EXTRACTION
+
+You are continuing development of "Assistant Pastoral", an Electron desktop application. This task focuses on implementing text extraction from various document formats.
+
+PREREQUISITE
+
+Task 01 (Foundation) must be completed. You should have the basic project structure with Electron, React, and TypeScript configured.
+
+OVERVIEW
+
+Implement extractors for PDF, DOCX, ODT, and Markdown/TXT files. Each extractor should:
+1. Read the file from disk
+2. Extract plain text content
+3. Parse metadata (title, date, Bible reference) when possible
+4. Return a standardized ExtractedContent object
+
+DEPENDENCIES TO USE
+
+- pdf-parse: 2.4.5 (NEW API in v2 - uses PDFParse class)
+- mammoth: 1.11.0
+- Node.js built-in fs/promises for file operations
+- Node.js built-in path for path operations
+
+IMPORTANT: pdf-parse v2 API change
+
+The pdf-parse library has a completely new API in v2. Do NOT use the old pattern:
+  const pdf = require("pdf-parse");
+  pdf(buffer).then(...)
+
+Use the new v2 pattern:
+  import { PDFParse } from "pdf-parse";
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  // result.text contains the extracted text
+
+DIRECTORY STRUCTURE
+
+src/main/extractors/
+  index.ts              (Factory and main extractText function)
+  pdf.extractor.ts      (PDF extraction using pdf-parse v2)
+  docx.extractor.ts     (DOCX extraction using mammoth)
+  odt.extractor.ts      (ODT extraction using JSZip)
+  markdown.extractor.ts (MD and TXT extraction)
+  utils.ts              (Metadata parsing utilities)
+
+TYPES
+
+In src/main/extractors/index.ts or a types file, define:
+
+ExtractedContent:
+  - content: string (the full text content)
+  - title: string | undefined (extracted or inferred title)
+  - date: string | undefined (YYYY-MM-DD format if found)
+  - bibleRef: string | undefined (Bible reference if found)
+
+FACTORY FUNCTION (src/main/extractors/index.ts)
+
+Create the main extractText function:
+
+export async function extractText(filePath: string): Promise<ExtractedContent>
+
+This function should:
+1. Get the file extension using path.extname().toLowerCase()
+2. Switch on extension to call the appropriate extractor:
+   - .pdf => extractPdf(filePath)
+   - .docx, .doc => extractDocx(filePath)
+   - .odt => extractOdt(filePath)
+   - .md, .txt => extractMarkdown(filePath)
+3. Throw an error for unsupported formats: "Format non supporte: {ext}"
+
+Export the ExtractedContent type and extractText function.
+
+PDF EXTRACTOR (src/main/extractors/pdf.extractor.ts)
+
+Implement extractPdf function using pdf-parse v2:
+
+import { readFile } from "fs/promises";
+import { PDFParse } from "pdf-parse";
+import { parseMetadata } from "./utils";
+import type { ExtractedContent } from "./index";
+
+export async function extractPdf(filePath: string): Promise<ExtractedContent> {
+  const buffer = await readFile(filePath);
+  
+  // pdf-parse v2 API
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  await parser.destroy(); // Important: free resources
+  
+  // Clean up the text
+  const content = result.text
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  
+  // Parse metadata from content
+  const metadata = parseMetadata(content);
+  
+  return {
+    content,
+    title: metadata.title,
+    date: metadata.date,
+    bibleRef: metadata.bibleRef
+  };
+}
+
+Handle errors gracefully:
+- If pdf-parse fails, throw a descriptive error
+- Log the error for debugging
+
+DOCX EXTRACTOR (src/main/extractors/docx.extractor.ts)
+
+Implement extractDocx function using mammoth:
+
+import mammoth from "mammoth";
+import { parseMetadata } from "./utils";
+import type { ExtractedContent } from "./index";
+
+export async function extractDocx(filePath: string): Promise<ExtractedContent> {
+  const result = await mammoth.extractRawText({ path: filePath });
+  const content = result.value.trim();
+  
+  // Log any warnings from mammoth
+  if (result.messages.length > 0) {
+    console.warn("Mammoth warnings for", filePath, result.messages);
+  }
+  
+  const metadata = parseMetadata(content);
+  
+  return {
+    content,
+    title: metadata.title,
+    date: metadata.date,
+    bibleRef: metadata.bibleRef
+  };
+}
+
+ODT EXTRACTOR (src/main/extractors/odt.extractor.ts)
+
+ODT files are ZIP archives containing XML. Extract text from content.xml:
+
+import { readFile } from "fs/promises";
+import { parseMetadata } from "./utils";
+import type { ExtractedContent } from "./index";
+
+You will need to:
+1. Read the file as a buffer
+2. Use a ZIP library to extract content.xml (you can use the built-in decompress or add jszip as a dependency)
+3. Parse the XML to extract text content
+4. Strip XML tags and normalize whitespace
+
+Since ODT parsing is complex, you may use a simpler approach:
+1. Read the ZIP file
+2. Extract content.xml
+3. Use regex to extract text between XML tags
+4. Clean up the result
+
+Alternative: Add "odt-text-extraction" or similar library if available, or implement basic XML text extraction.
+
+For simplicity, you can implement a basic version:
+
+export async function extractOdt(filePath: string): Promise<ExtractedContent> {
+  // ODT files are ZIP archives
+  // content.xml contains the text in <text:p> elements
+  
+  const AdmZip = require("adm-zip"); // Add adm-zip to dependencies if needed
+  const zip = new AdmZip(filePath);
+  const contentXml = zip.readAsText("content.xml");
+  
+  // Extract text from XML (basic approach)
+  const content = contentXml
+    .replace(/<text:p[^>]*>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  
+  const metadata = parseMetadata(content);
+  
+  return {
+    content,
+    title: metadata.title,
+    date: metadata.date,
+    bibleRef: metadata.bibleRef
+  };
+}
+
+MARKDOWN EXTRACTOR (src/main/extractors/markdown.extractor.ts)
+
+Simple extraction for .md and .txt files:
+
+import { readFile } from "fs/promises";
+import { parseMetadata } from "./utils";
+import type { ExtractedContent } from "./index";
+
+export async function extractMarkdown(filePath: string): Promise<ExtractedContent> {
+  const content = await readFile(filePath, "utf-8");
+  const trimmedContent = content.trim();
+  
+  const metadata = parseMetadata(trimmedContent);
+  
+  return {
+    content: trimmedContent,
+    title: metadata.title,
+    date: metadata.date,
+    bibleRef: metadata.bibleRef
+  };
+}
+
+METADATA PARSING UTILITIES (src/main/extractors/utils.ts)
+
+Create parseMetadata function to extract sermon metadata from content:
+
+interface ParsedMetadata {
+  title?: string;
+  date?: string;
+  bibleRef?: string;
+}
+
+export function parseMetadata(content: string): ParsedMetadata {
+  const result: ParsedMetadata = {};
+  
+  // TITLE EXTRACTION
+  // Try to find title from:
+  // 1. First markdown H1: # Title
+  // 2. First bold line: **Title**
+  // 3. First line if short enough
+  
+  const h1Match = content.match(/^#\s+(.+)$/m);
+  if (h1Match) {
+    result.title = h1Match[1].trim();
+  } else {
+    const boldMatch = content.match(/^\*\*(.+)\*\*$/m);
+    if (boldMatch) {
+      result.title = boldMatch[1].trim();
+    } else {
+      // Use first line if it's short (likely a title)
+      const firstLine = content.split("\n")[0].trim();
+      if (firstLine.length > 0 && firstLine.length < 100) {
+        result.title = firstLine;
+      }
+    }
+  }
+  
+  // DATE EXTRACTION
+  // Try multiple patterns common in French sermon documents
+  const datePatterns = [
+    /\*\*Date\*\*\s*:\s*(\d{1,2}\s+\w+\s+\d{4})/i,
+    /Date\s*:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
+    /Date\s*:\s*(\d{1,2}\s+\w+\s+\d{4})/i,
+    /(\d{4}-\d{2}-\d{2})/,
+    /(\d{1,2}\/\d{1,2}\/\d{4})/,
+    /(\d{1,2}\s+(?:janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\s+\d{4})/i
+  ];
+  
+  for (const pattern of datePatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      result.date = normalizeDate(match[1]);
+      break;
+    }
+  }
+  
+  // BIBLE REFERENCE EXTRACTION
+  // Common patterns in French sermons
+  const biblePatterns = [
+    /\*\*Texte\*\*\s*:\s*([A-Za-zÀ-ÿ]+\s+\d+[:\d\-,\s]*)/i,
+    /Texte\s*:\s*([A-Za-zÀ-ÿ]+\s+\d+[:\d\-,\s]*)/i,
+    /Lecture\s*:\s*([A-Za-zÀ-ÿ]+\s+\d+[:\d\-,\s]*)/i,
+    /Reference\s*:\s*([A-Za-zÀ-ÿ]+\s+\d+[:\d\-,\s]*)/i,
+    /\*\*Reference\*\*\s*:\s*([A-Za-zÀ-ÿ]+\s+\d+[:\d\-,\s]*)/i
+  ];
+  
+  for (const pattern of biblePatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      result.bibleRef = match[1].trim();
+      break;
+    }
+  }
+  
+  return result;
+}
+
+// Helper function to normalize dates to YYYY-MM-DD format
+function normalizeDate(dateStr: string): string {
+  // Already in ISO format
+  const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return dateStr;
+  
+  // French format DD/MM/YYYY
+  const frMatch = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (frMatch) {
+    const [, day, month, year] = frMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  
+  // French text format "15 janvier 2024"
+  const frenchMonths: Record<string, string> = {
+    janvier: "01", fevrier: "02", mars: "03", avril: "04",
+    mai: "05", juin: "06", juillet: "07", aout: "08",
+    septembre: "09", octobre: "10", novembre: "11", decembre: "12"
+  };
+  
+  const textMatch = dateStr.toLowerCase().match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
+  if (textMatch) {
+    const [, day, monthName, year] = textMatch;
+    const month = frenchMonths[monthName.normalize("NFD").replace(/[\u0300-\u036f]/g, "")];
+    if (month) {
+      return `${year}-${month}-${day.padStart(2, "0")}`;
+    }
+  }
+  
+  // Return original if cannot normalize
+  return dateStr;
+}
+
+UNIT TESTS
+
+Create tests in tests/main/extractors/:
+
+pdf.extractor.test.ts:
+- Test extraction from a sample PDF file
+- Test handling of corrupted PDF (should throw)
+- Test metadata extraction from PDF content
+
+docx.extractor.test.ts:
+- Test extraction from a sample DOCX file
+- Test that mammoth warnings are logged
+
+markdown.extractor.test.ts:
+- Test extraction from .md file
+- Test extraction from .txt file
+- Test title extraction from # heading
+- Test title extraction from **bold** line
+
+utils.test.ts:
+- Test parseMetadata with various content formats
+- Test date normalization for different formats
+- Test Bible reference extraction
+
+Create sample test files in tests/fixtures/:
+- sample-sermon.md
+- sample-sermon.txt
+
+Sample sermon content for testing:
+
+# La Grace de Dieu
+
+**Date** : 15 janvier 2024
+**Texte** : Jean 3:16-17
+
+Introduction
+
+La grace de Dieu est un theme central de l'Evangile...
+
+ERROR HANDLING
+
+Each extractor should:
+1. Catch and rethrow errors with context: "Erreur extraction {format}: {originalError}"
+2. Handle file not found gracefully
+3. Handle corrupted files gracefully
+4. Log errors for debugging
+
+FILE SIZE CHECK
+
+Before extraction, check file size:
+
+import { stat } from "fs/promises";
+import { MAX_FILE_SIZE } from "../../shared/constants";
+
+async function checkFileSize(filePath: string): Promise<void> {
+  const stats = await stat(filePath);
+  if (stats.size > MAX_FILE_SIZE) {
+    throw new Error(`Fichier trop volumineux: ${Math.round(stats.size / 1024 / 1024)}MB (max: 50MB)`);
+  }
+}
+
+Call this at the beginning of extractText function.
+
+EXPORTS
+
+From src/main/extractors/index.ts, export:
+- extractText function
+- ExtractedContent type
+- Individual extractors for testing: extractPdf, extractDocx, extractOdt, extractMarkdown
+
+INTEGRATION WITH MAIN PROCESS
+
+This task does NOT integrate with IPC handlers yet. The extractors will be used by the IndexerService in Task 03.
+
+VERIFICATION
+
+After implementation:
+1. Create a test script that extracts text from sample files
+2. Verify PDF extraction works with pdf-parse v2 API
+3. Verify DOCX extraction works with mammoth
+4. Verify metadata parsing extracts title, date, and Bible references
+5. Run npm run test to verify all unit tests pass
+6. Run npm run typecheck to verify TypeScript compiles
+
+DO NOT implement:
+- Database storage (task 03)
+- IPC handlers (task 03/04)
+- UI components (task 04)
+- File watching (task 03)
+
+Focus only on text extraction from files and metadata parsing.

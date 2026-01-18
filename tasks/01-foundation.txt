@@ -1,0 +1,355 @@
+TASK 01 - FOUNDATION AND PROJECT SETUP
+
+You are building "Assistant Pastoral", an Electron desktop application for pastors to index, search, and chat with their sermons using Claude AI.
+
+PROJECT INITIALIZATION
+
+Create a new Electron project with the following stack and exact versions:
+
+Dependencies (production):
+- electron: 40.0.0
+- react: 19.2.3
+- react-dom: 19.2.3
+- better-sqlite3: 12.6.2
+- @anthropic-ai/sdk: 0.71.2
+- zustand: 5.0.10
+- lucide-react: 0.562.0
+- pdf-parse: 2.4.5
+- mammoth: 1.11.0
+- chokidar: 5.0.0
+
+DevDependencies:
+- typescript: 5.9.3
+- vite: 7.3.1
+- tailwindcss: 4.1.18
+- electron-builder: 26.4.0
+- vitest: 4.0.17
+- @vitejs/plugin-react: latest
+- @types/react: latest
+- @types/react-dom: latest
+- @types/better-sqlite3: latest
+- vite-plugin-electron: latest
+- vite-plugin-electron-renderer: latest
+- postcss: latest
+- autoprefixer: latest
+- eslint: latest
+- @typescript-eslint/parser: latest
+- @typescript-eslint/eslint-plugin: latest
+
+DIRECTORY STRUCTURE
+
+Create the following folder structure:
+
+src/
+  main/
+    index.ts              (Electron main process entry point)
+    window.ts             (BrowserWindow creation and configuration)
+    ipc/
+      index.ts            (Register all IPC handlers)
+    services/
+      (empty, will be filled in later tasks)
+    extractors/
+      (empty, will be filled in later tasks)
+    types/
+      index.ts
+    utils/
+      paths.ts            (App paths utilities using app.getPath)
+      logger.ts           (Simple logging utility)
+  renderer/
+    index.html            (HTML entry point)
+    main.tsx              (React entry point)
+    App.tsx               (Root React component)
+    components/
+      layout/
+        (empty, will be filled in later tasks)
+      chat/
+        (empty, will be filled in later tasks)
+      documents/
+        (empty, will be filled in later tasks)
+      settings/
+        (empty, will be filled in later tasks)
+      common/
+        (empty, will be filled in later tasks)
+    hooks/
+      (empty, will be filled in later tasks)
+    stores/
+      (empty, will be filled in later tasks)
+    lib/
+      cn.ts               (Classnames helper utility)
+    styles/
+      globals.css         (Tailwind directives and custom styles)
+    types/
+      index.ts
+  preload/
+    index.ts              (Secure preload script with contextBridge)
+  shared/
+    types.ts              (Shared TypeScript types between main and renderer)
+    ipc-channels.ts       (IPC channel name constants)
+    constants.ts          (App constants)
+
+MAIN PROCESS ENTRY POINT (src/main/index.ts)
+
+Implement the main Electron entry point with:
+- app.whenReady() bootstrap function
+- Handle electron-squirrel-startup for Windows
+- Create main window using createWindow from window.ts
+- Register IPC handlers from ipc/index.ts
+- Handle window-all-closed event (quit on non-darwin)
+- Handle activate event (recreate window on macOS)
+- Placeholder for database initialization (will be done in task 03)
+- Placeholder for watcher initialization (will be done in task 03)
+
+WINDOW CONFIGURATION (src/main/window.ts)
+
+Create BrowserWindow with these security settings:
+- contextIsolation: true (CRITICAL)
+- nodeIntegration: false (CRITICAL)
+- sandbox: true (CRITICAL)
+- preload: path to preload script
+
+Window settings:
+- width: 1200, height: 800
+- minWidth: 900, minHeight: 600
+- title: "Assistant Pastoral"
+- backgroundColor: "#FAF7F2" (cream color from design spec)
+- titleBarStyle: "hiddenInset" on macOS, "default" on others
+- trafficLightPosition: { x: 15, y: 15 } on macOS
+
+Load URL:
+- Development: http://localhost:5173
+- Production: load dist/renderer/index.html
+
+Set up external link handler to open in default browser using shell.openExternal
+
+Configure Content Security Policy using session.defaultSession.webRequest.onHeadersReceived:
+- default-src 'self'
+- script-src 'self'
+- style-src 'self' 'unsafe-inline'
+- connect-src 'self' https://api.anthropic.com
+- img-src 'self' data:
+
+PRELOAD SCRIPT (src/preload/index.ts)
+
+Use contextBridge.exposeInMainWorld to expose a secure API named "electronAPI" with these namespaces:
+
+documents: (placeholders for now)
+  - getAll: () => invoke DOCUMENTS_GET_ALL
+  - getById: (id: number) => invoke DOCUMENTS_GET_BY_ID
+  - delete: (id: number) => invoke DOCUMENTS_DELETE
+  - openExternal: (id: number) => invoke DOCUMENTS_OPEN_EXTERNAL
+
+indexer:
+  - selectFolder: () => invoke INDEXER_SELECT_FOLDER
+  - indexFolder: (path: string) => invoke INDEXER_INDEX_FOLDER
+  - onProgress: (callback) => subscribe to INDEXER_PROGRESS events
+
+search:
+  - query: (query: string) => invoke SEARCH_QUERY
+
+chat:
+  - send: (message: string, history?: array) => invoke CHAT_SEND
+  - summarize: (documentId: number) => invoke CHAT_SUMMARIZE
+
+credits:
+  - get: () => invoke CREDITS_GET
+  - purchase: (amount: number) => invoke CREDITS_PURCHASE
+
+settings:
+  - get: (key: string) => invoke SETTINGS_GET
+  - set: (key: string, value: string) => invoke SETTINGS_SET
+  - getAll: () => invoke SETTINGS_GET_ALL
+
+Export TypeScript types for the API and declare global Window interface augmentation.
+
+IPC CHANNELS (src/shared/ipc-channels.ts)
+
+Define a const object IPC_CHANNELS with all channel names:
+- DOCUMENTS_GET_ALL: "documents:getAll"
+- DOCUMENTS_GET_BY_ID: "documents:getById"
+- DOCUMENTS_DELETE: "documents:delete"
+- DOCUMENTS_OPEN_EXTERNAL: "documents:openExternal"
+- INDEXER_SELECT_FOLDER: "indexer:selectFolder"
+- INDEXER_INDEX_FOLDER: "indexer:indexFolder"
+- INDEXER_PROGRESS: "indexer:progress"
+- SEARCH_QUERY: "search:query"
+- CHAT_SEND: "chat:send"
+- CHAT_SUMMARIZE: "chat:summarize"
+- CREDITS_GET: "credits:get"
+- CREDITS_PURCHASE: "credits:purchase"
+- SETTINGS_GET: "settings:get"
+- SETTINGS_SET: "settings:set"
+- SETTINGS_GET_ALL: "settings:getAll"
+
+Export as const for type safety.
+
+SHARED TYPES (src/shared/types.ts)
+
+Define these TypeScript interfaces:
+
+Document:
+  - id: number
+  - path: string
+  - title: string
+  - content: string
+  - date: string | null
+  - bible_ref: string | null
+  - word_count: number
+  - hash: string
+  - indexed_at: string
+  - updated_at: string
+
+Conversation:
+  - id: number
+  - title: string | null
+  - created_at: string
+  - updated_at: string
+
+Message:
+  - id: number
+  - conversation_id: number
+  - role: "user" | "assistant"
+  - content: string
+  - tokens_used: number
+  - created_at: string
+
+Settings:
+  - anthropic_api_key?: string
+  - sermons_folder?: string
+  - font_size?: "small" | "medium" | "large"
+
+IndexingProgress:
+  - total: number
+  - current: number
+  - currentFile: string
+
+ChatResponse:
+  - response: string
+  - tokensUsed: number
+  - sources: Array of { id: number, title: string, snippet: string }
+
+CONSTANTS (src/shared/constants.ts)
+
+Define app constants:
+- APP_NAME: "Assistant Pastoral"
+- SUPPORTED_EXTENSIONS: [".pdf", ".docx", ".doc", ".md", ".txt", ".odt"]
+- MAX_FILE_SIZE: 50 * 1024 * 1024 (50MB)
+- DEFAULT_CREDITS: 100
+- TOKENS_PER_CREDIT: 1000
+- MAX_CONTEXT_TOKENS: 4000
+- MAX_CONTEXT_DOCUMENTS: 5
+
+REACT ENTRY POINT (src/renderer/main.tsx)
+
+Set up React 19 with:
+- Import globals.css
+- Create root using createRoot
+- Render App component
+- Use StrictMode
+
+APP COMPONENT (src/renderer/App.tsx)
+
+Create a minimal App component that:
+- Displays "Assistant Pastoral" title
+- Shows a placeholder message "Application is loading..."
+- Uses Tailwind classes for styling
+- Has the cream background color (#FAF7F2)
+
+TAILWIND CONFIGURATION
+
+Set up Tailwind CSS 4.1 with:
+- Content paths for src/renderer
+- Custom color palette:
+  - burgundy: "#722F37"
+  - gold: "#B8860B"
+  - cream: "#FAF7F2"
+  - cream-light: "#FFFEF9"
+  - muted: "#6B5B4F"
+- Custom font family: serif for headings
+
+GLOBALS CSS (src/renderer/styles/globals.css)
+
+Include Tailwind directives and base styles:
+- Set default background to cream
+- Set default text color
+- Add smooth scrolling
+- Style scrollbars for a refined look
+
+VITE CONFIGURATION (vite.config.ts)
+
+Configure Vite with:
+- React plugin
+- Electron plugin (vite-plugin-electron)
+- Electron renderer plugin
+- Path aliases (@ for src/renderer)
+- Build output configuration
+
+TYPESCRIPT CONFIGURATION
+
+Create three tsconfig files:
+1. tsconfig.json (base config)
+2. tsconfig.main.json (for main process, target ES2022, module NodeNext)
+3. tsconfig.renderer.json (for renderer, target ESNext, JSX react-jsx)
+
+All with strict mode enabled.
+
+ELECTRON BUILDER CONFIGURATION (electron-builder.yml)
+
+Configure for multi-platform builds:
+- appId: com.assistant-pastoral.app
+- productName: Assistant Pastoral
+- Windows: NSIS installer
+- macOS: DMG with hardenedRuntime
+- Linux: AppImage and deb
+- Files to include: dist-electron, dist, package.json
+
+PACKAGE.JSON SCRIPTS
+
+Add these npm scripts:
+- dev: Start Vite dev server with Electron
+- build: Build for production
+- build:win: Build Windows installer
+- build:mac: Build macOS DMG
+- build:linux: Build Linux packages
+- lint: Run ESLint
+- typecheck: Run TypeScript compiler check
+- test: Run Vitest
+
+UTILITIES
+
+Create src/main/utils/paths.ts:
+- getAppDataPath(): returns app.getPath("userData")
+- getDatabasePath(): returns path to sermons.db in userData
+- getLogPath(): returns path to logs directory
+
+Create src/main/utils/logger.ts:
+- Simple logging utility with info, warn, error methods
+- Logs to console in dev, to file in production
+
+Create src/renderer/lib/cn.ts:
+- Export cn function that combines class names (use clsx pattern)
+
+IPC HANDLER REGISTRATION (src/main/ipc/index.ts)
+
+Create placeholder function registerIpcHandlers() that:
+- Imports and calls registration functions from each handler file
+- Will be populated in later tasks
+- For now, just log "IPC handlers registered"
+
+VERIFICATION
+
+After setup, verify:
+1. npm run dev starts the app without errors
+2. The window shows the cream background with "Assistant Pastoral" text
+3. DevTools opens in development mode
+4. No security warnings in console about contextIsolation or nodeIntegration
+5. npm run typecheck passes without errors
+6. npm run lint passes without errors
+
+DO NOT implement:
+- Database functionality (task 03)
+- Text extraction (task 02)
+- Search functionality (task 04)
+- AI integration (task 05)
+- Settings UI (task 06)
+
+Focus only on the foundation: project structure, security configuration, IPC scaffolding, and basic React setup.

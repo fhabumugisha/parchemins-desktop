@@ -1,0 +1,883 @@
+TASK 05 - AI INTEGRATION AND CHAT
+
+You are continuing development of "Assistant Pastoral", an Electron desktop application. This task focuses on implementing the Claude AI integration and chat interface.
+
+PREREQUISITES
+
+Tasks 01, 02, 03, and 04 must be completed. You should have:
+- Basic project structure
+- Text extractors
+- Database with FTS5 search
+- Document management UI
+- Zustand stores
+
+OVERVIEW
+
+Implement:
+1. ClaudeService - API integration with RAG (Retrieval-Augmented Generation)
+2. Chat IPC handlers
+3. Chat Zustand store
+4. Chat UI components (ChatPanel, MessageList, MessageBubble, ChatInput)
+5. Credit management integration
+
+DEPENDENCIES
+
+- @anthropic-ai/sdk: 0.71.2 (already installed)
+- Model to use: claude-sonnet-4-5-20250929
+
+CLAUDE SERVICE (src/main/services/claude.service.ts)
+
+Create the Claude AI service with RAG implementation:
+
+import Anthropic from "@anthropic-ai/sdk";
+import { getSetting, getCredits, updateCredits, searchDocuments } from "./database.service";
+import type { ChatResponse } from "../../shared/types";
+
+let client: Anthropic | null = null;
+
+// Get or create Anthropic client
+function getClient(): Anthropic {
+  if (!client) {
+    const apiKey = getSetting("anthropic_api_key");
+    if (!apiKey) {
+      throw new Error("Cle API Anthropic non configuree. Veuillez la configurer dans les parametres.");
+    }
+    client = new Anthropic({ apiKey });
+  }
+  return client;
+}
+
+// Reset client (when API key changes)
+export function resetClaudeClient(): void {
+  client = null;
+}
+
+// Check if API key is configured
+export function isApiKeyConfigured(): boolean {
+  const apiKey = getSetting("anthropic_api_key");
+  return !!apiKey && apiKey.length > 0;
+}
+
+interface ChatRequest {
+  message: string;
+  conversationHistory?: { role: "user" | "assistant"; content: string }[];
+}
+
+// Main chat function with RAG
+export async function chat(request: ChatRequest): Promise<ChatResponse> {
+  // Check credits
+  const credits = getCredits();
+  if (credits <= 0) {
+    throw new Error("Credits insuffisants. Veuillez acheter des credits pour continuer.");
+  }
+  
+  // Search for relevant documents (RAG retrieval)
+  const relevantDocs = searchDocuments(request.message, 5);
+  
+  // Build context from documents
+  const context = relevantDocs.map(doc => `
+---
+<sermon>
+<titre>${doc.title}</titre>
+${doc.date ? `<date>${doc.date}</date>` : ""}
+${doc.bible_ref ? `<reference>${doc.bible_ref}</reference>` : ""}
+<contenu>
+${doc.content.substring(0, 2500)}${doc.content.length > 2500 ? "..." : ""}
+</contenu>
+</sermon>
+---
+`).join("\n");
+
+  // Build system prompt
+  const systemPrompt = `Tu es un assistant pour pasteurs protestants francophones. Tu aides a rechercher, analyser et exploiter leurs archives de sermons.
+
+${relevantDocs.length > 0 ? `CONTEXTE - Sermons pertinents de l'utilisateur :
+
+${context}
+
+` : ""}INSTRUCTIONS :
+1. Base tes reponses prioritairement sur les sermons fournis quand c'est pertinent
+2. Cite le titre du sermon quand tu t'en inspires (entre guillemets)
+3. Si l'information n'est pas dans les sermons, indique-le clairement
+4. Reponds en francais, de maniere pastorale et bienveillante
+5. Sois concis mais complet
+6. Pour les resumes, utilise des puces structurees
+7. Pour les recherches, liste les sermons pertinents avec leurs dates
+8. Pour les suggestions de preparation, propose des pistes concretes
+
+Tu es la pour aider, pas pour remplacer la reflexion theologique du pasteur.`;
+
+  // Build messages
+  const messages: Anthropic.MessageParam[] = [
+    ...(request.conversationHistory || []).map(msg => ({
+      role: msg.role as "user" | "assistant",
+      content: msg.content
+    })),
+    { role: "user", content: request.message }
+  ];
+
+  try {
+    // Call Anthropic API
+    const response = await getClient().messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages
+    });
+
+    // Calculate tokens used
+    const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+    
+    // Deduct credits (1 credit = ~1000 tokens)
+    const creditsUsed = Math.ceil(tokensUsed / 1000);
+    updateCredits(-creditsUsed);
+
+    // Extract text response
+    const textContent = response.content.find(c => c.type === "text");
+    const responseText = textContent?.type === "text" ? textContent.text : "";
+
+    return {
+      response: responseText,
+      tokensUsed,
+      sources: relevantDocs.map(d => ({
+        id: d.id,
+        title: d.title,
+        snippet: (d as any).snippet || d.content.substring(0, 200) + "..."
+      }))
+    };
+  } catch (error) {
+    // Handle specific Anthropic errors
+    if (error instanceof Anthropic.AuthenticationError) {
+      throw new Error("Cle API invalide. Verifiez vos parametres.");
+    }
+    if (error instanceof Anthropic.RateLimitError) {
+      throw new Error("Limite de requetes atteinte. Reessayez dans quelques instants.");
+    }
+    if (error instanceof Anthropic.APIError) {
+      throw new Error(`Erreur API Anthropic: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+// Summarize a specific document
+export async function summarizeDocument(documentId: number, content: string, title: string): Promise<string> {
+  // Check credits
+  const credits = getCredits();
+  if (credits <= 0) {
+    throw new Error("Credits insuffisants.");
+  }
+
+  const response = await getClient().messages.create({
+    model: "claude-sonnet-4-5-20250929",
+    max_tokens: 1024,
+    system: "Tu es un assistant pour pasteurs. Resume les sermons de maniere concise et structuree en francais.",
+    messages: [{
+      role: "user",
+      content: `Resume ce sermon intitule "${title}" en 3-5 points cles :
+
+${content.substring(0, 8000)}`
+    }]
+  });
+
+  const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+  const creditsUsed = Math.ceil(tokensUsed / 1000);
+  updateCredits(-creditsUsed);
+
+  const textContent = response.content.find(c => c.type === "text");
+  return textContent?.type === "text" ? textContent.text : "";
+}
+
+// Test API key validity
+export async function testApiKey(apiKey: string): Promise<boolean> {
+  try {
+    const testClient = new Anthropic({ apiKey });
+    await testClient.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 10,
+      messages: [{ role: "user", content: "test" }]
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+CHAT IPC HANDLERS
+
+Create src/main/ipc/chat.ipc.ts:
+
+import { ipcMain } from "electron";
+import { IPC_CHANNELS } from "../../shared/ipc-channels";
+import { chat, summarizeDocument, isApiKeyConfigured, testApiKey } from "../services/claude.service";
+import { getDocumentById, createConversation, addMessage, getConversationMessages } from "../services/database.service";
+
+export function registerChatHandlers(): void {
+  // Send chat message
+  ipcMain.handle(IPC_CHANNELS.CHAT_SEND, async (_, message: string, history?: { role: "user" | "assistant"; content: string }[]) => {
+    if (!isApiKeyConfigured()) {
+      throw new Error("Cle API non configuree");
+    }
+    
+    return await chat({
+      message,
+      conversationHistory: history
+    });
+  });
+  
+  // Summarize document
+  ipcMain.handle(IPC_CHANNELS.CHAT_SUMMARIZE, async (_, documentId: number) => {
+    if (!isApiKeyConfigured()) {
+      throw new Error("Cle API non configuree");
+    }
+    
+    const doc = getDocumentById(documentId);
+    if (!doc) {
+      throw new Error("Document non trouve");
+    }
+    
+    return await summarizeDocument(documentId, doc.content, doc.title);
+  });
+  
+  // Test API key
+  ipcMain.handle("chat:testApiKey", async (_, apiKey: string) => {
+    return await testApiKey(apiKey);
+  });
+  
+  // Check if API key is configured
+  ipcMain.handle("chat:isConfigured", async () => {
+    return isApiKeyConfigured();
+  });
+}
+
+Update src/main/ipc/index.ts to include chat handlers:
+
+import { registerDocumentsHandlers } from "./documents.ipc";
+import { registerSearchHandlers } from "./search.ipc";
+import { registerSettingsHandlers } from "./settings.ipc";
+import { registerChatHandlers } from "./chat.ipc";
+
+export function registerIpcHandlers(): void {
+  registerDocumentsHandlers();
+  registerSearchHandlers();
+  registerSettingsHandlers();
+  registerChatHandlers();
+  console.log("IPC handlers registered");
+}
+
+UPDATE PRELOAD
+
+Add to src/preload/index.ts chat methods:
+
+chat: {
+  send: (message: string, history?: { role: "user" | "assistant"; content: string }[]) => 
+    ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, message, history),
+  summarize: (documentId: number) => 
+    ipcRenderer.invoke(IPC_CHANNELS.CHAT_SUMMARIZE, documentId),
+  testApiKey: (apiKey: string) => 
+    ipcRenderer.invoke("chat:testApiKey", apiKey),
+  isConfigured: () => 
+    ipcRenderer.invoke("chat:isConfigured"),
+},
+
+CHAT STORE
+
+Create src/renderer/stores/chat.store.ts:
+
+import { create } from "zustand";
+import type { ChatResponse } from "../../shared/types";
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: { id: number; title: string; snippet: string }[];
+  timestamp: Date;
+  isError?: boolean;
+}
+
+interface ChatState {
+  messages: ChatMessage[];
+  isLoading: boolean;
+  error: string | null;
+  isApiConfigured: boolean;
+  
+  // Actions
+  sendMessage: (content: string) => Promise<void>;
+  clearChat: () => void;
+  checkApiConfiguration: () => Promise<void>;
+  summarizeDocument: (documentId: number, documentTitle: string) => Promise<void>;
+}
+
+export const useChatStore = create<ChatState>((set, get) => ({
+  messages: [],
+  isLoading: false,
+  error: null,
+  isApiConfigured: false,
+  
+  sendMessage: async (content) => {
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      timestamp: new Date()
+    };
+    
+    set(state => ({
+      messages: [...state.messages, userMessage],
+      isLoading: true,
+      error: null
+    }));
+    
+    try {
+      // Build conversation history (exclude current message)
+      const history = get().messages
+        .filter(m => !m.isError)
+        .map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+      
+      const response: ChatResponse = await window.electronAPI.chat.send(content, history);
+      
+      const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: response.response,
+        sources: response.sources,
+        timestamp: new Date()
+      };
+      
+      set(state => ({
+        messages: [...state.messages, assistantMessage],
+        isLoading: false
+      }));
+    } catch (error) {
+      const errorMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: (error as Error).message,
+        timestamp: new Date(),
+        isError: true
+      };
+      
+      set(state => ({
+        messages: [...state.messages, errorMessage],
+        error: (error as Error).message,
+        isLoading: false
+      }));
+    }
+  },
+  
+  clearChat: () => {
+    set({ messages: [], error: null });
+  },
+  
+  checkApiConfiguration: async () => {
+    try {
+      const isConfigured = await window.electronAPI.chat.isConfigured();
+      set({ isApiConfigured: isConfigured });
+    } catch {
+      set({ isApiConfigured: false });
+    }
+  },
+  
+  summarizeDocument: async (documentId, documentTitle) => {
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: `Resume mon sermon "${documentTitle}"`,
+      timestamp: new Date()
+    };
+    
+    set(state => ({
+      messages: [...state.messages, userMessage],
+      isLoading: true,
+      error: null
+    }));
+    
+    try {
+      const summary = await window.electronAPI.chat.summarize(documentId);
+      
+      const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: summary,
+        timestamp: new Date()
+      };
+      
+      set(state => ({
+        messages: [...state.messages, assistantMessage],
+        isLoading: false
+      }));
+    } catch (error) {
+      set({
+        error: (error as Error).message,
+        isLoading: false
+      });
+    }
+  }
+}));
+
+CHAT COMPONENTS
+
+Create src/renderer/components/chat/ChatPanel.tsx:
+
+import React, { useRef, useEffect } from "react";
+import { useChatStore } from "../../stores/chat.store";
+import { useCreditsStore } from "../../stores/credits.store";
+import { MessageList } from "./MessageList";
+import { ChatInput } from "./ChatInput";
+import { WelcomeMessage } from "./WelcomeMessage";
+import { LoadingSpinner } from "../common/LoadingSpinner";
+import { AlertTriangle } from "lucide-react";
+
+export function ChatPanel() {
+  const { messages, isLoading, error, isApiConfigured, sendMessage, checkApiConfiguration } = useChatStore();
+  const { credits, fetchCredits } = useCreditsStore();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    checkApiConfiguration();
+    fetchCredits();
+  }, []);
+  
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+  
+  const handleSend = async (content: string) => {
+    if (!isApiConfigured) {
+      return;
+    }
+    if (credits <= 0) {
+      // Could show a modal to purchase credits
+      return;
+    }
+    await sendMessage(content);
+    fetchCredits(); // Refresh credits after message
+  };
+  
+  // Show API key required message
+  if (!isApiConfigured) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+        <AlertTriangle className="w-12 h-12 text-gold mb-4" />
+        <h2 className="text-xl font-serif text-burgundy mb-2">
+          Configuration requise
+        </h2>
+        <p className="text-muted mb-4 max-w-md">
+          Pour utiliser l'assistant IA, vous devez configurer votre cle API Anthropic dans les parametres.
+        </p>
+        <button
+          onClick={() => {/* Navigate to settings */}}
+          className="px-4 py-2 bg-burgundy text-white rounded-lg hover:bg-burgundy/90 transition-colors"
+        >
+          Ouvrir les parametres
+        </button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="h-full flex flex-col bg-cream">
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {messages.length === 0 ? (
+          <WelcomeMessage onSuggestionClick={handleSend} />
+        ) : (
+          <MessageList messages={messages} />
+        )}
+        
+        {isLoading && (
+          <div className="flex items-center gap-3 text-muted mt-4">
+            <LoadingSpinner size="sm" />
+            <span>Reflexion en cours...</span>
+          </div>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </div>
+      
+      {/* Credits warning */}
+      {credits <= 10 && credits > 0 && (
+        <div className="mx-6 mb-2 px-4 py-2 bg-gold/10 border border-gold/30 rounded-lg text-sm text-gold">
+          Attention : il vous reste seulement {credits} credit{credits > 1 ? "s" : ""}.
+        </div>
+      )}
+      
+      {credits <= 0 && (
+        <div className="mx-6 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          Credits epuises. Achetez des credits pour continuer a utiliser l'assistant.
+        </div>
+      )}
+      
+      {/* Input area */}
+      <div className="border-t border-gray-200 bg-white p-4">
+        <ChatInput 
+          onSend={handleSend} 
+          disabled={isLoading || credits <= 0} 
+        />
+      </div>
+    </div>
+  );
+}
+
+Create src/renderer/components/chat/MessageList.tsx:
+
+import React from "react";
+import { MessageBubble } from "./MessageBubble";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: { id: number; title: string; snippet: string }[];
+  timestamp: Date;
+  isError?: boolean;
+}
+
+interface MessageListProps {
+  messages: Message[];
+}
+
+export function MessageList({ messages }: MessageListProps) {
+  return (
+    <div className="space-y-4 max-w-3xl mx-auto">
+      {messages.map(message => (
+        <MessageBubble key={message.id} message={message} />
+      ))}
+    </div>
+  );
+}
+
+Create src/renderer/components/chat/MessageBubble.tsx:
+
+import React from "react";
+import { User, Bot, AlertCircle, FileText } from "lucide-react";
+import { cn } from "../../lib/cn";
+import { useDocumentsStore } from "../../stores/documents.store";
+import { useUIStore } from "../../stores/ui.store";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: { id: number; title: string; snippet: string }[];
+  timestamp: Date;
+  isError?: boolean;
+}
+
+interface MessageBubbleProps {
+  message: Message;
+}
+
+export function MessageBubble({ message }: MessageBubbleProps) {
+  const { selectDocument } = useDocumentsStore();
+  const { setActiveView } = useUIStore();
+  const isUser = message.role === "user";
+  
+  const handleSourceClick = async (sourceId: number) => {
+    const doc = await window.electronAPI.documents.getById(sourceId);
+    if (doc) {
+      selectDocument(doc);
+      setActiveView("document");
+    }
+  };
+  
+  return (
+    <div className={cn(
+      "flex gap-3",
+      isUser ? "justify-end" : "justify-start"
+    )}>
+      {/* Avatar */}
+      {!isUser && (
+        <div className={cn(
+          "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+          message.isError ? "bg-red-100" : "bg-burgundy/10"
+        )}>
+          {message.isError ? (
+            <AlertCircle className="w-4 h-4 text-red-500" />
+          ) : (
+            <Bot className="w-4 h-4 text-burgundy" />
+          )}
+        </div>
+      )}
+      
+      <div className={cn(
+        "max-w-[80%] rounded-2xl px-4 py-3",
+        isUser 
+          ? "bg-burgundy text-white" 
+          : message.isError 
+            ? "bg-red-50 text-red-700 border border-red-200" 
+            : "bg-white shadow-sm border border-gray-100"
+      )}>
+        {/* Message content */}
+        <div className={cn(
+          "whitespace-pre-wrap",
+          !isUser && !message.isError && "text-gray-800"
+        )}>
+          {message.content}
+        </div>
+        
+        {/* Sources */}
+        {message.sources && message.sources.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <p className="text-xs text-muted mb-2">Sources utilisees :</p>
+            <div className="space-y-1">
+              {message.sources.map(source => (
+                <button
+                  key={source.id}
+                  onClick={() => handleSourceClick(source.id)}
+                  className="flex items-center gap-2 text-xs text-burgundy hover:underline"
+                >
+                  <FileText className="w-3 h-3" />
+                  {source.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Timestamp */}
+        <div className={cn(
+          "text-xs mt-2",
+          isUser ? "text-white/70" : "text-muted"
+        )}>
+          {message.timestamp.toLocaleTimeString("fr-FR", { 
+            hour: "2-digit", 
+            minute: "2-digit" 
+          })}
+        </div>
+      </div>
+      
+      {/* User avatar */}
+      {isUser && (
+        <div className="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
+          <User className="w-4 h-4 text-gold" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+Create src/renderer/components/chat/ChatInput.tsx:
+
+import React, { useState, useRef, useEffect } from "react";
+import { Send } from "lucide-react";
+import { cn } from "../../lib/cn";
+
+interface ChatInputProps {
+  onSend: (content: string) => void;
+  disabled?: boolean;
+}
+
+export function ChatInput({ onSend, disabled }: ChatInputProps) {
+  const [value, setValue] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+    }
+  }, [value]);
+  
+  const handleSubmit = () => {
+    const trimmed = value.trim();
+    if (trimmed && !disabled) {
+      onSend(trimmed);
+      setValue("");
+    }
+  };
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+  
+  return (
+    <div className="flex items-end gap-3">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        placeholder="Posez votre question sur vos sermons..."
+        rows={1}
+        className={cn(
+          "flex-1 resize-none rounded-xl border border-gray-200 px-4 py-3",
+          "focus:outline-none focus:ring-2 focus:ring-burgundy/20 focus:border-burgundy",
+          "disabled:bg-gray-50 disabled:cursor-not-allowed",
+          "transition-colors"
+        )}
+      />
+      <button
+        onClick={handleSubmit}
+        disabled={disabled || !value.trim()}
+        className={cn(
+          "p-3 rounded-xl bg-burgundy text-white",
+          "hover:bg-burgundy/90 transition-colors",
+          "disabled:opacity-50 disabled:cursor-not-allowed"
+        )}
+      >
+        <Send className="w-5 h-5" />
+      </button>
+    </div>
+  );
+}
+
+Create src/renderer/components/chat/WelcomeMessage.tsx:
+
+import React from "react";
+import { MessageSquare, Search, FileText, Sparkles } from "lucide-react";
+
+interface WelcomeMessageProps {
+  onSuggestionClick: (suggestion: string) => void;
+}
+
+export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
+  const suggestions = [
+    { icon: Search, text: "Trouve mes sermons sur la grace" },
+    { icon: FileText, text: "Resume mon dernier sermon" },
+    { icon: Sparkles, text: "Quels themes pour Paques ?" },
+    { icon: MessageSquare, text: "Ai-je deja parle du pardon ?" }
+  ];
+  
+  return (
+    <div className="max-w-2xl mx-auto text-center py-12">
+      <div className="w-16 h-16 bg-burgundy/10 rounded-full flex items-center justify-center mx-auto mb-6">
+        <MessageSquare className="w-8 h-8 text-burgundy" />
+      </div>
+      
+      <h2 className="text-2xl font-serif text-burgundy mb-3">
+        Bienvenue, cher pasteur
+      </h2>
+      
+      <p className="text-muted mb-8 max-w-md mx-auto">
+        Posez-moi vos questions sur vos sermons. Je peux rechercher, 
+        resumer, comparer et vous aider a preparer vos predications.
+      </p>
+      
+      <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
+        {suggestions.map(({ icon: Icon, text }) => (
+          <button
+            key={text}
+            onClick={() => onSuggestionClick(text)}
+            className="flex items-center gap-2 px-4 py-3 text-sm text-left bg-white border border-gray-200 rounded-xl hover:border-burgundy hover:bg-burgundy/5 transition-colors"
+          >
+            <Icon className="w-4 h-4 text-burgundy flex-shrink-0" />
+            <span className="text-gray-700">{text}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+UPDATE MAIN CONTENT
+
+Update src/renderer/components/layout/MainContent.tsx to show ChatPanel:
+
+import React from "react";
+import { useUIStore } from "../../stores/ui.store";
+import { useDocumentsStore } from "../../stores/documents.store";
+import { DocumentViewer } from "../documents/DocumentViewer";
+import { ChatPanel } from "../chat/ChatPanel";
+
+export function MainContent() {
+  const { activeView } = useUIStore();
+  const { selectedDocument } = useDocumentsStore();
+  
+  // If a document is selected and we're viewing documents, show the viewer
+  if (selectedDocument && activeView === "document") {
+    return <DocumentViewer />;
+  }
+  
+  switch (activeView) {
+    case "chat":
+      return <ChatPanel />;
+    case "settings":
+      return (
+        <div className="h-full flex items-center justify-center text-muted">
+          <p>Parametres seront implementes dans la tache 06</p>
+        </div>
+      );
+    case "document":
+    default:
+      if (!selectedDocument) {
+        return (
+          <div className="h-full flex items-center justify-center text-muted">
+            <p>Selectionnez un document dans la liste</p>
+          </div>
+        );
+      }
+      return <DocumentViewer />;
+  }
+}
+
+ADD SUMMARIZE BUTTON TO DOCUMENT VIEWER
+
+Update DocumentViewer to add a summarize button:
+
+// Add to imports
+import { useChatStore } from "../../stores/chat.store";
+
+// Add inside the component
+const { summarizeDocument } = useChatStore();
+
+const handleSummarize = async () => {
+  await summarizeDocument(selectedDocument.id, selectedDocument.title);
+  setActiveView("chat");
+};
+
+// Add button next to "Ouvrir le fichier" button
+<button
+  onClick={handleSummarize}
+  className="flex items-center gap-2 px-3 py-1.5 text-sm border border-burgundy text-burgundy rounded-lg hover:bg-burgundy/5 transition-colors"
+>
+  <Sparkles className="w-4 h-4" />
+  <span>Resumer</span>
+</button>
+
+UPDATE TYPES
+
+Add to src/shared/types.ts if not already present:
+
+export interface ChatResponse {
+  response: string;
+  tokensUsed: number;
+  sources: Array<{
+    id: number;
+    title: string;
+    snippet: string;
+  }>;
+}
+
+VERIFICATION
+
+After implementation:
+1. npm run dev starts without errors
+2. Chat panel shows welcome message when API is configured
+3. Can send messages and receive AI responses
+4. Sources are displayed with clickable links
+5. Loading state shows spinner during response
+6. Credits are deducted after each message
+7. Low credit warning appears when credits < 10
+8. Error messages display properly for API failures
+9. Conversation history is maintained within session
+10. Can summarize documents from viewer
+11. npm run typecheck passes
+
+DO NOT implement:
+- API key input UI (task 06)
+- Settings panel (task 06)
+- Persistent conversation history (optional enhancement)
+- Streaming responses (optional enhancement)
+
+Focus on the core chat functionality with RAG and credit management.
