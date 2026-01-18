@@ -14,6 +14,7 @@ import { useUIStore } from "@/stores/ui.store";
 import { useChatStore } from "@/stores/chat.store";
 import { cn } from "@/lib/cn";
 import { messages } from "@shared/messages";
+import { showToast } from "@/components/common/Toast";
 
 export function DocumentViewer() {
   const { selectedDocument, selectDocument, openDocumentExternal } =
@@ -44,6 +45,7 @@ export function DocumentViewer() {
     try {
       await summarizeDocument(selectedDocument.id, selectedDocument.title);
       setActiveView("chat");
+      showToast("info", messages.chat.summarized(selectedDocument.title));
     } finally {
       setIsSummarizing(false);
     }

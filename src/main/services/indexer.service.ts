@@ -14,12 +14,34 @@ import type { IndexingProgress, IndexingResult } from '../../shared/types';
 
 type ProgressCallback = (progress: IndexingProgress) => void;
 
+// Cancellation support
+let isCancelled = false;
+
+export function cancelIndexing(): boolean {
+  if (!isCancelled) {
+    isCancelled = true;
+    return true;
+  }
+  return false;
+}
+
+export function isIndexingCancelled(): boolean {
+  return isCancelled;
+}
+
+function resetCancellation(): void {
+  isCancelled = false;
+}
+
 export async function indexFolder(
   folderPath: string,
   onProgress?: ProgressCallback,
   forceReindex = false
 ): Promise<IndexingResult> {
-  const result: IndexingResult = { added: 0, updated: 0, removed: 0, errors: [] };
+  // Reset cancellation flag at start
+  resetCancellation();
+
+  const result: IndexingResult = { added: 0, updated: 0, removed: 0, errors: [], cancelled: false };
 
   // Get all supported files recursively
   const files = await getFilesRecursive(folderPath);
@@ -29,6 +51,12 @@ export async function indexFolder(
 
   // Index each file
   for (let i = 0; i < supportedFiles.length; i++) {
+    // Check for cancellation
+    if (isCancelled) {
+      result.cancelled = true;
+      break;
+    }
+
     const filePath = supportedFiles[i];
 
     onProgress?.({
@@ -48,8 +76,13 @@ export async function indexFolder(
     }
   }
 
-  // Remove deleted documents
-  result.removed = await removeDeletedDocuments(folderPath);
+  // Remove deleted documents (only if not cancelled)
+  if (!isCancelled) {
+    result.removed = await removeDeletedDocuments(folderPath);
+  }
+
+  // Reset cancellation flag at end
+  resetCancellation();
 
   return result;
 }

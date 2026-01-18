@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Key, Folder, Type, Info, Shield, Trash2, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Key, Folder, Type, Info, Shield, Trash2, CheckCircle, AlertTriangle, RefreshCw, X } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useUIStore } from '@/stores/ui.store';
 import { useCreditsStore } from '@/stores/credits.store';
@@ -8,6 +8,7 @@ import { useDocumentsStore } from '@/stores/documents.store';
 import { Button } from '@/components/common/Button';
 import { cn } from '@/lib/cn';
 import { messages } from '@shared/messages';
+import { showToast } from '@/components/common/Toast';
 
 export function SettingsPanel() {
   const { setActiveView, fontSize, setFontSize } = useUIStore();
@@ -23,7 +24,7 @@ export function SettingsPanel() {
     fetchAppInfo,
   } = useSettingsStore();
   const { credits } = useCreditsStore();
-  const { selectFolder, indexFolder, forceReindex, isIndexing, progress } = useIndexerStore();
+  const { selectFolder, indexFolder, forceReindex, cancelIndexing, isIndexing, progress } = useIndexerStore();
   const { fetchDocuments } = useDocumentsStore();
 
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -45,9 +46,11 @@ export function SettingsPanel() {
       setApiKeyInput('');
       setShowApiKeyInput(false);
       setSaveSuccess(true);
+      showToast('success', messages.settings.apiKey.savedSuccess);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       setSaveError((err as Error).message);
+      showToast('error', (err as Error).message);
     }
   };
 
@@ -71,8 +74,13 @@ export function SettingsPanel() {
     const result = await forceReindex();
     if (result) {
       await fetchDocuments();
-      setReindexSuccess(result.updated);
-      setTimeout(() => setReindexSuccess(null), 5000);
+      if (result.cancelled) {
+        showToast('info', messages.folders.indexingCancelled);
+      } else {
+        setReindexSuccess(result.updated);
+        showToast('success', messages.folders.reindexSuccess(result.updated));
+        setTimeout(() => setReindexSuccess(null), 5000);
+      }
     }
   };
 
@@ -214,9 +222,20 @@ export function SettingsPanel() {
               </div>
 
               {isIndexing && progress && (
-                <p className="text-sm text-muted">
-                  {messages.folders.indexingFile(progress.currentFile, progress.current, progress.total)}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted">
+                    {messages.folders.indexingFile(progress.currentFile, progress.current, progress.total)}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={cancelIndexing}
+                    className="text-red-500 hover:bg-red-50"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    {messages.folders.cancelIndexing}
+                  </Button>
+                </div>
               )}
 
               {reindexSuccess !== null && (

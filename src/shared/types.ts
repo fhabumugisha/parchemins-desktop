@@ -54,4 +54,5 @@ export interface IndexingResult {
   updated: number;
   removed: number;
   errors: string[];
+  cancelled?: boolean;
 }

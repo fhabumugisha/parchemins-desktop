@@ -9,6 +9,7 @@ export const IPC_CHANNELS = {
   INDEXER_SELECT_FOLDER: 'indexer:selectFolder',
   INDEXER_INDEX_FOLDER: 'indexer:indexFolder',
   INDEXER_FORCE_REINDEX: 'indexer:forceReindex',
+  INDEXER_CANCEL: 'indexer:cancel',
   INDEXER_PROGRESS: 'indexer:progress',
 
   // Recherche

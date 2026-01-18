@@ -11,6 +11,7 @@ interface IndexerState {
   selectFolder: () => Promise<string | null>;
   indexFolder: (path: string) => Promise<void>;
   forceReindex: () => Promise<IndexingResult | null>;
+  cancelIndexing: () => Promise<boolean>;
   setFolderPath: (path: string) => void;
 }
 
@@ -65,6 +66,14 @@ export const useIndexerStore = create<IndexerState>((set) => ({
     } finally {
       unsubscribe();
     }
+  },
+
+  cancelIndexing: async () => {
+    const result = await window.electronAPI.indexer.cancel();
+    if (result) {
+      set({ isIndexing: false, progress: null });
+    }
+    return result;
   },
 
   setFolderPath: (path) => set({ folderPath: path }),

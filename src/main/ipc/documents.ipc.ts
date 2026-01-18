@@ -9,7 +9,7 @@ import {
   getSetting,
 } from '../services/database.service';
 import { startWatcher } from '../services/watcher.service';
-import { forceReindexFolder } from '../services/indexer.service';
+import { forceReindexFolder, cancelIndexing } from '../services/indexer.service';
 import type { IndexingProgress } from '../../shared/types';
 
 export function registerDocumentsHandlers(): void {
@@ -90,6 +90,11 @@ export function registerDocumentsHandlers(): void {
 
     const result = await forceReindexFolder(folderPath, onProgress);
     return result;
+  });
+
+  // Cancel indexing
+  ipcMain.handle(IPC_CHANNELS.INDEXER_CANCEL, () => {
+    return cancelIndexing();
   });
 }
 

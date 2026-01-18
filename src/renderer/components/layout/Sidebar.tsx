@@ -11,6 +11,7 @@ import { useDocumentsStore } from "@/stores/documents.store";
 import { useIndexerStore } from "@/stores/indexer.store";
 import { DocumentList } from "@/components/documents/DocumentList";
 import { SearchInput } from "@/components/common/SearchInput";
+import { Tooltip } from "@/components/common/Tooltip";
 import { messages } from "@shared/messages";
 
 export function Sidebar() {
@@ -34,26 +35,30 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <aside className="fixed left-0 top-14 bottom-0 w-16 bg-white border-r border-gray-200 flex flex-col items-center py-4 gap-4">
-        <button
-          onClick={() => setActiveView("chat")}
-          className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
-          title={messages.nav.chat}
-        >
-          <MessageSquare className="w-5 h-5 text-muted" />
-        </button>
-        <button
-          onClick={() => setActiveView("document")}
-          className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
-          title={messages.nav.documents}
-        >
-          <FileText className="w-5 h-5 text-muted" />
-        </button>
-        <button
-          onClick={toggleSidebar}
-          className="mt-auto p-3 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <ChevronRight className="w-5 h-5 text-muted" />
-        </button>
+        <Tooltip content={messages.nav.chat} side="right">
+          <button
+            onClick={() => setActiveView("chat")}
+            className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <MessageSquare className="w-5 h-5 text-muted" />
+          </button>
+        </Tooltip>
+        <Tooltip content={messages.nav.documents} side="right">
+          <button
+            onClick={() => setActiveView("document")}
+            className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <FileText className="w-5 h-5 text-muted" />
+          </button>
+        </Tooltip>
+        <Tooltip content={messages.common.expand} side="right">
+          <button
+            onClick={toggleSidebar}
+            className="mt-auto p-3 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ChevronRight className="w-5 h-5 text-muted" />
+          </button>
+        </Tooltip>
       </aside>
     );
   }

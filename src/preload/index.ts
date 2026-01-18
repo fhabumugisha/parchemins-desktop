@@ -17,6 +17,7 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.INDEXER_INDEX_FOLDER, folderPath),
     forceReindex: (): Promise<IndexingResult> =>
       ipcRenderer.invoke(IPC_CHANNELS.INDEXER_FORCE_REINDEX),
+    cancel: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.INDEXER_CANCEL),
     onProgress: (callback: (progress: IndexingProgress) => void): (() => void) => {
       const handler = (_event: Electron.IpcRendererEvent, progress: IndexingProgress) => callback(progress);
       ipcRenderer.on(IPC_CHANNELS.INDEXER_PROGRESS, handler);

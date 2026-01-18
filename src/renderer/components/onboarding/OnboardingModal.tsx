@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FolderOpen, Key, MessageSquare, ArrowRight } from 'lucide-react';
+import { FolderOpen, Key, MessageSquare, ArrowRight, ExternalLink, Shield, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useIndexerStore } from '@/stores/indexer.store';
@@ -15,9 +15,10 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const { saveApiKey } = useSettingsStore();
-  const { selectFolder, indexFolder, isIndexing, progress } = useIndexerStore();
+  const { selectFolder, indexFolder, isIndexing, progress, cancelIndexing } = useIndexerStore();
   const { fetchDocuments } = useDocumentsStore();
 
   const steps = [
@@ -98,6 +99,41 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
           {step === 1 && (
             <div className="space-y-4">
+              {/* Expandable help section */}
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-burgundy/5 rounded-lg text-left hover:bg-burgundy/10 transition-colors"
+              >
+                <div className="flex items-center gap-2 text-burgundy">
+                  <HelpCircle className="w-4 h-4" />
+                  <span className="text-sm font-medium">{messages.onboarding.apiKey.whatIsApiKey}</span>
+                </div>
+                {showHelp ? <ChevronUp className="w-4 h-4 text-burgundy" /> : <ChevronDown className="w-4 h-4 text-burgundy" />}
+              </button>
+
+              {showHelp && (
+                <div className="px-4 py-3 bg-gray-50 rounded-lg text-sm space-y-3">
+                  <p className="text-muted">{messages.onboarding.apiKey.apiKeyExplanation}</p>
+                  <div className="space-y-2">
+                    <p className="font-medium text-gray-700">Comment obtenir votre clé :</p>
+                    <ol className="list-decimal list-inside space-y-1 text-muted">
+                      <li>{messages.onboarding.apiKey.steps.step1}</li>
+                      <li>{messages.onboarding.apiKey.steps.step2}</li>
+                      <li>{messages.onboarding.apiKey.steps.step3}</li>
+                    </ol>
+                  </div>
+                  <a
+                    href="https://console.anthropic.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-burgundy hover:underline"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    {messages.onboarding.apiKey.getKey}
+                  </a>
+                </div>
+              )}
+
               <input
                 type="password"
                 value={apiKey}
@@ -110,16 +146,17 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
               <div className="flex gap-3">
                 <Button variant="secondary" onClick={() => setStep(2)} className="flex-1">
-                  {messages.common.skip}
+                  {messages.onboarding.apiKey.skipForNow}
                 </Button>
                 <Button onClick={handleApiKeySubmit} disabled={isLoading} isLoading={isLoading} className="flex-1">
                   {messages.common.continue}
                 </Button>
               </div>
 
-              <p className="text-xs text-center text-muted">
-                {messages.settings.apiKey.configLater}
-              </p>
+              <div className="flex items-center justify-center gap-2 text-xs text-muted">
+                <Shield className="w-3 h-3" />
+                <span>{messages.onboarding.apiKey.securityNote}</span>
+              </div>
             </div>
           )}
 
@@ -138,6 +175,13 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                   <p className="text-sm text-center text-muted">
                     {progress ? messages.folders.indexingFile(progress.currentFile, progress.current, progress.total) : messages.folders.preparation}
                   </p>
+                  <Button
+                    variant="secondary"
+                    onClick={cancelIndexing}
+                    className="w-full"
+                  >
+                    {messages.folders.cancelIndexing}
+                  </Button>
                 </div>
               ) : (
                 <>

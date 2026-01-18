@@ -16,6 +16,7 @@ export const messages = {
     back: 'Retour',
     close: 'Fermer',
     reduce: 'Réduire',
+    expand: 'Étendre',
     search: 'Rechercher',
     copy: 'Copier',
     copied: 'Copié !',
@@ -49,6 +50,8 @@ export const messages = {
     selectFolder: 'Sélectionner un dossier',
     changeFolder: 'Changer de dossier',
     indexing: 'Indexation...',
+    cancelIndexing: 'Annuler',
+    indexingCancelled: 'Indexation annulée',
     noFolderConfigured: 'Aucun dossier configuré',
     sermonsFolder: 'Dossier de sermons',
     searchInSermons: 'Rechercher dans les sermons...',
@@ -91,9 +94,12 @@ export const messages = {
       title: 'Crédits',
       count: (n: number) => `${n} crédit${n > 1 ? 's' : ''}`,
       description: "1 crédit = 1 question à l'assistant IA",
-      buyCredits: 'Acheter des crédits (bientôt disponible)',
+      buyCredits: 'Obtenir des crédits',
+      buyCreditsComingSoon: 'Bientôt disponible',
       warning: (n: number) => `Attention : il vous reste seulement ${n} crédit${n > 1 ? 's' : ''}.`,
-      exhausted: "Crédits épuisés. Achetez des crédits pour continuer à utiliser l'assistant.",
+      exhausted: 'Crédits épuisés',
+      exhaustedDesc: "Vous pouvez toujours rechercher et consulter vos sermons. L'assistant IA sera disponible dès que vous aurez des crédits.",
+      searchStillWorks: 'La recherche dans vos sermons reste disponible',
     },
 
     // À propos
@@ -113,6 +119,7 @@ export const messages = {
     configRequired: 'Configuration requise',
     configRequiredDesc:
       "Pour utiliser l'assistant IA, vous devez configurer votre clé API Anthropic dans les paramètres.",
+    goToSettings: 'Aller aux paramètres',
     thinking: 'Réflexion en cours...',
     sourcesUsed: 'Sources utilisées :',
     welcome: {
@@ -127,6 +134,8 @@ export const messages = {
       },
     },
     inputPlaceholder: 'Posez votre question...',
+    summarizing: (title: string) => `Résumé de "${title}" en cours...`,
+    summarized: (title: string) => `Résumé généré depuis "${title}"`,
   },
 
   // Onboarding
@@ -137,9 +146,20 @@ export const messages = {
         "Dialoguez avec vos sermons grâce à l'intelligence artificielle. Configurons votre application en quelques étapes.",
     },
     apiKey: {
-      title: 'Clé API Anthropic',
+      title: 'Connexion à Claude',
       description:
-        "Pour utiliser l'IA, vous avez besoin d'une clé API Anthropic. Vous pouvez l'obtenir gratuitement sur console.anthropic.com",
+        "Pour dialoguer avec vos sermons, l'application utilise Claude, une IA développée par Anthropic.",
+      whatIsApiKey: "Qu'est-ce qu'une clé API ?",
+      apiKeyExplanation:
+        "C'est comme un mot de passe qui permet à l'application de communiquer avec Claude. Vous en obtenez une gratuitement en créant un compte sur Anthropic.",
+      steps: {
+        step1: 'Créez un compte gratuit sur console.anthropic.com',
+        step2: 'Cliquez sur "API Keys" puis "Create Key"',
+        step3: 'Copiez la clé et collez-la ci-dessous',
+      },
+      getKey: 'Obtenir ma clé API',
+      skipForNow: 'Plus tard (recherche locale uniquement)',
+      securityNote: 'Votre clé est stockée de manière sécurisée sur votre ordinateur uniquement.',
     },
     sermons: {
       title: 'Vos sermons',
