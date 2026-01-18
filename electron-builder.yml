@@ -1,5 +1,5 @@
-appId: com.assistant-pastoral.app
-productName: Assistant Pastoral
+appId: com.parchemins.app
+productName: Parchemins
 copyright: Copyright © 2025
 
 directories:
@@ -11,19 +11,30 @@ files:
   - dist/**/*
   - package.json
 
+# Unpack native modules from ASAR (critical for better-sqlite3)
+asarUnpack:
+  - "**/*.node"
+  - "**/node_modules/better-sqlite3/**/*"
+
 # Windows
 win:
   target:
     - target: nsis
       arch: [x64]
-  icon: resources/icon.ico
+    - target: portable
+      arch: [x64]
+  # icon: resources/icon.ico  # Uncomment when icon.ico is created
   artifactName: "${productName}-Setup-${version}.${ext}"
+  signAndEditExecutable: false  # Skip code signing (not needed for unsigned release)
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  installerIcon: resources/icon.ico
-  uninstallerIcon: resources/icon.ico
+  # installerIcon: resources/icon.ico  # Uncomment when icon.ico is created
+  # uninstallerIcon: resources/icon.ico  # Uncomment when icon.ico is created
+
+portable:
+  artifactName: "${productName}-Portable-${version}.${ext}"
 
 # macOS
 mac:

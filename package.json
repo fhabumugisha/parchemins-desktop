@@ -1,9 +1,9 @@
 {
-  "name": "assistant-pastoral",
+  "name": "parchemins",
   "version": "1.0.0",
   "description": "Dialoguez avec vos sermons - Application desktop pour pasteurs",
   "main": "dist-electron/main/index.js",
-  "author": "Assistant Pastoral",
+  "author": "Parchemins",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
