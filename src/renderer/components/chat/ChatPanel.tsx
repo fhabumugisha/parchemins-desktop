@@ -1,8 +1,9 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chat.store';
 import { useCreditsStore } from '@/stores/credits.store';
 import { useUIStore } from '@/stores/ui.store';
 import { useDocumentsStore } from '@/stores/documents.store';
+import { useConversationsStore } from '@/stores/conversations.store';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { WelcomeMessage } from './WelcomeMessage';
@@ -10,16 +11,20 @@ import { LoadingSpinner } from '../common/LoadingSpinner';
 import { Button } from '../common/Button';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
-import { AlertTriangle, Search, Settings, MessageSquarePlus } from 'lucide-react';
+import { AlertTriangle, Search, Settings, MessageSquarePlus, Save, History, Check } from 'lucide-react';
 import { messages as i18n } from '@shared/messages';
+import { cn } from '@/lib/cn';
 
 export function ChatPanel() {
-  const { messages: chatMessages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration, clearChat } = useChatStore();
+  const { messages: chatMessages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration, clearChat, saveCurrentChat, currentConversationId } = useChatStore();
   const { credits, fetchCredits } = useCreditsStore();
-  const { setActiveView } = useUIStore();
+  const { setActiveView, toggleConversationsPanel, conversationsPanelOpen } = useUIStore();
   const { fetchDocuments } = useDocumentsStore();
+  const { fetchConversations } = useConversationsStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { confirm, dialogProps } = useConfirmDialog();
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
 
   useEffect(() => {
     checkApiConfiguration();
@@ -52,6 +57,20 @@ export function ChatPanel() {
     }
   };
 
+  const handleSaveConversation = async () => {
+    if (chatMessages.length === 0 || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await saveCurrentChat();
+      await fetchConversations();
+      setShowSaved(true);
+      setTimeout(() => setShowSaved(false), 2000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (!isApiConfigured) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 text-center">
@@ -74,17 +93,59 @@ export function ChatPanel() {
 
   return (
     <div className="h-full flex flex-col bg-cream">
-      {chatMessages.length > 0 && (
-        <div className="flex justify-end px-6 pt-4 pb-2">
+      <div className="flex justify-between items-center px-6 pt-4 pb-2">
+        <div>
+          {currentConversationId && (
+            <span className="text-xs text-gray-400">Conversation sauvegardee</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {chatMessages.length > 0 && (
+            <>
+              <button
+                onClick={handleSaveConversation}
+                disabled={isSaving || currentConversationId !== null}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors',
+                  showSaved
+                    ? 'text-green-600 bg-green-50'
+                    : currentConversationId
+                      ? 'text-gray-400 cursor-default'
+                      : 'text-muted hover:text-burgundy hover:bg-burgundy/5'
+                )}
+                title={currentConversationId ? 'Deja sauvegardee' : 'Sauvegarder la conversation'}
+              >
+                {showSaved ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {showSaved ? 'Sauvegardee' : 'Sauvegarder'}
+              </button>
+              <button
+                onClick={handleNewChat}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted hover:text-burgundy hover:bg-burgundy/5 rounded-lg transition-colors"
+              >
+                <MessageSquarePlus className="w-4 h-4" />
+                {i18n.chat.newChat}
+              </button>
+            </>
+          )}
           <button
-            onClick={handleNewChat}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted hover:text-burgundy hover:bg-burgundy/5 rounded-lg transition-colors"
+            onClick={toggleConversationsPanel}
+            className={cn(
+              'flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors',
+              conversationsPanelOpen
+                ? 'text-burgundy bg-burgundy/10'
+                : 'text-muted hover:text-burgundy hover:bg-burgundy/5'
+            )}
+            title="Historique des conversations"
           >
-            <MessageSquarePlus className="w-4 h-4" />
-            {i18n.chat.newChat}
+            <History className="w-4 h-4" />
+            Historique
           </button>
         </div>
-      )}
+      </div>
       <div className="flex-1 overflow-y-auto p-6">
         {chatMessages.length === 0 ? (
           <WelcomeMessage onSuggestionClick={handleSend} />

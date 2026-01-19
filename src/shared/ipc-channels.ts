@@ -28,6 +28,15 @@ export const IPC_CHANNELS = {
   CHAT_TEST_API_KEY: 'chat:testApiKey',
   CHAT_IS_CONFIGURED: 'chat:isConfigured',
 
+  // Conversations
+  CONVERSATIONS_CREATE: 'conversations:create',
+  CONVERSATIONS_GET_ALL: 'conversations:getAll',
+  CONVERSATIONS_GET_BY_ID: 'conversations:getById',
+  CONVERSATIONS_DELETE: 'conversations:delete',
+  CONVERSATIONS_UPDATE_TITLE: 'conversations:updateTitle',
+  CONVERSATIONS_ADD_MESSAGE: 'conversations:addMessage',
+  CONVERSATIONS_GET_MESSAGES: 'conversations:getMessages',
+
   // Credits
   CREDITS_GET: 'credits:get',
   CREDITS_PURCHASE: 'credits:purchase',

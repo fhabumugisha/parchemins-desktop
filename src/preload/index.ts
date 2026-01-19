@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { IndexingProgress, ChatResponse, Settings, Document, IndexingResult } from '../shared/types';
+import type { IndexingProgress, ChatResponse, Settings, Document, IndexingResult, Conversation, Message } from '../shared/types';
 
 const electronAPI = {
   documents: {
@@ -54,6 +54,17 @@ const electronAPI = {
     summarize: (documentId: number): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SUMMARIZE, documentId),
     testApiKey: (apiKey: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_TEST_API_KEY, apiKey),
     isConfigured: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_IS_CONFIGURED),
+  },
+
+  conversations: {
+    create: (title?: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_CREATE, title),
+    getAll: (): Promise<Conversation[]> => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_GET_ALL),
+    getById: (id: number): Promise<Conversation | undefined> => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_GET_BY_ID, id),
+    delete: (id: number): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_DELETE, id),
+    updateTitle: (id: number, title: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_UPDATE_TITLE, id, title),
+    addMessage: (conversationId: number, role: 'user' | 'assistant', content: string, tokensUsed?: number): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_ADD_MESSAGE, conversationId, role, content, tokensUsed),
+    getMessages: (conversationId: number): Promise<Message[]> => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_GET_MESSAGES, conversationId),
   },
 
   credits: {

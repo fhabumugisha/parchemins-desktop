@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, FileText } from 'lucide-react';
+import { Send, FileText, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { messages } from '@shared/messages';
 import { useDocumentsStore } from '@/stores/documents.store';
@@ -96,13 +96,16 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const handleSubmit = () => {
     const trimmed = value.trim();
     if (trimmed && !disabled) {
+      // Utiliser en priorité les IDs des mentions insérées via le dropdown
+      const referencedIds: number[] = [...new Set(mentions.map((m) => m.id))];
+
+      // Aussi chercher les mentions tapées manuellement (comparaison insensible à la casse)
       const mentionPattern = /@([^@\s]+(?:\s+[^@\s]+)*)/g;
-      const referencedIds: number[] = [];
       let match;
 
       while ((match = mentionPattern.exec(trimmed)) !== null) {
-        const mentionTitle = match[1];
-        const doc = documents.find((d) => d.title === mentionTitle);
+        const mentionTitle = match[1].toLowerCase();
+        const doc = documents.find((d) => d.title.toLowerCase() === mentionTitle);
         if (doc && !referencedIds.includes(doc.id)) {
           referencedIds.push(doc.id);
         }
@@ -144,6 +147,27 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     setCursorPosition(e.target.selectionStart);
   };
 
+  const openSermonSelector = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const cursorPos = textarea.selectionStart;
+    const before = value.substring(0, cursorPos);
+    const after = value.substring(cursorPos);
+
+    const newValue = before + '@' + after;
+    setValue(newValue);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newPos = cursorPos + 1;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newPos, newPos);
+        setCursorPosition(newPos);
+      }
+    }, 0);
+  };
+
   return (
     <div className="relative flex items-end gap-3">
       {showDropdown && filteredDocs.length > 0 && (
@@ -166,6 +190,18 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           ))}
         </div>
       )}
+      <button
+        onClick={openSermonSelector}
+        disabled={disabled || documents.length === 0}
+        title="Ajouter un sermon (@)"
+        className={cn(
+          'p-3 rounded-xl border border-gray-200 text-gray-600',
+          'hover:bg-gray-50 hover:text-burgundy hover:border-burgundy/30 transition-colors',
+          'disabled:opacity-50 disabled:cursor-not-allowed'
+        )}
+      >
+        <BookOpen className="w-5 h-5" />
+      </button>
       <textarea
         ref={textareaRef}
         value={value}

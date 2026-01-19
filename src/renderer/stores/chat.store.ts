@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatResponse } from '@shared/types';
+import type { ChatResponse, Message } from '@shared/types';
 import { getErrorMessage } from '../lib/error';
 
 interface ChatMessage {
@@ -16,11 +16,15 @@ interface ChatState {
   isLoading: boolean;
   error: string | null;
   isApiConfigured: boolean;
+  currentConversationId: number | null;
 
   sendMessage: (content: string, referencedDocumentIds?: number[]) => Promise<void>;
   clearChat: () => void;
   checkApiConfiguration: () => Promise<void>;
   summarizeDocument: (documentId: number, documentTitle: string) => Promise<void>;
+  loadFromConversation: (conversationId: number, messages: Message[]) => void;
+  saveCurrentChat: () => Promise<number | null>;
+  setCurrentConversationId: (id: number | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -28,6 +32,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoading: false,
   error: null,
   isApiConfigured: false,
+  currentConversationId: null,
 
   sendMessage: async (content, referencedDocumentIds = []) => {
     const userMessage: ChatMessage = {
@@ -84,7 +89,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearChat: () => {
-    set({ messages: [], error: null });
+    set({ messages: [], error: null, currentConversationId: null });
   },
 
   checkApiConfiguration: async () => {
@@ -130,5 +135,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isLoading: false,
       });
     }
+  },
+
+  loadFromConversation: (conversationId: number, messages: Message[]) => {
+    const chatMessages: ChatMessage[] = messages.map((m) => ({
+      id: crypto.randomUUID(),
+      role: m.role,
+      content: m.content,
+      timestamp: new Date(m.created_at),
+    }));
+    set({ messages: chatMessages, currentConversationId: conversationId, error: null });
+  },
+
+  saveCurrentChat: async () => {
+    const { messages, currentConversationId } = get();
+    if (messages.length === 0) return null;
+
+    const validMessages = messages.filter((m) => !m.isError);
+    if (validMessages.length === 0) return null;
+
+    const firstUserMessage = validMessages.find((m) => m.role === 'user');
+    const title = firstUserMessage ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '') : 'Conversation';
+
+    if (currentConversationId) {
+      return currentConversationId;
+    }
+
+    const conversationId = await window.electronAPI.conversations.create(title);
+    for (const msg of validMessages) {
+      await window.electronAPI.conversations.addMessage(conversationId, msg.role, msg.content);
+    }
+    set({ currentConversationId: conversationId });
+    return conversationId;
+  },
+
+  setCurrentConversationId: (id: number | null) => {
+    set({ currentConversationId: id });
   },
 }));

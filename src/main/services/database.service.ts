@@ -487,6 +487,12 @@ export function addMessage(
   return result.lastInsertRowid as number;
 }
 
+export function updateConversationTitle(id: number, title: string): void {
+  getDb()
+    .prepare('UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    .run(title, id);
+}
+
 export function deleteConversation(id: number): void {
   getDb().prepare('DELETE FROM conversations WHERE id = ?').run(id);
 }
@@ -579,9 +585,14 @@ export function logUsage(inputTokens: number, outputTokens: number): void {
     .prepare('INSERT INTO usage_logs (input_tokens, output_tokens, cost_usd) VALUES (?, ?, ?)')
     .run(inputTokens, outputTokens, totalCost);
 
-  console.log(
-    `[Usage] in: ${inputTokens}, out: ${outputTokens}, cost: $${totalCost.toFixed(4)}`
-  );
+  // Wrap console.log to avoid EPIPE errors when stdout pipe is closed
+  try {
+    console.log(
+      `[Usage] in: ${inputTokens}, out: ${outputTokens}, cost: $${totalCost.toFixed(4)}`
+    );
+  } catch {
+    // Ignore EPIPE errors
+  }
 }
 
 export function getUsageStats(days = 30): UsageStats {

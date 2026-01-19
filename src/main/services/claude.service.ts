@@ -84,12 +84,16 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     const vectorResults = searchDocumentsSemantic(queryEmbedding, MAX_CONTEXT_DOCUMENTS);
     const relevantDocs = searchDocumentsHybrid(ftsResults, vectorResults, MAX_CONTEXT_DOCUMENTS);
 
-    console.log('[Chat] Hybrid search results:', relevantDocs.map(d => ({
-      id: d.id,
-      title: d.title,
-      score: d.score,
-      matchType: d.matchType
-    })));
+    try {
+      console.log('[Chat] Hybrid search results:', relevantDocs.map(d => ({
+        id: d.id,
+        title: d.title,
+        score: d.score,
+        matchType: d.matchType
+      })));
+    } catch {
+      // Ignore EPIPE errors
+    }
 
     // Tous les documents sont envoyés à Claude comme contexte
     sermonContexts = relevantDocs.map((doc) => ({
@@ -126,7 +130,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     const client = createClient();
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: systemPrompt,
       messages,
     });

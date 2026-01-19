@@ -4,6 +4,7 @@ import { registerSearchHandlers } from './search.ipc';
 import { registerSettingsHandlers } from './settings.ipc';
 import { registerChatHandlers } from './chat.ipc';
 import { registerUsageHandlers } from './usage.ipc';
+import { registerConversationsHandlers } from './conversations.ipc';
 
 export function registerIpcHandlers(): void {
   registerDocumentsHandlers();
@@ -11,6 +12,7 @@ export function registerIpcHandlers(): void {
   registerSettingsHandlers();
   registerChatHandlers();
   registerUsageHandlers();
+  registerConversationsHandlers();
 
   logger.info('IPC handlers registered');
 }

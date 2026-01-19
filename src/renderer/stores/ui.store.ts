@@ -8,11 +8,14 @@ interface UIState {
   sidebarCollapsed: boolean;
   activeView: View;
   fontSize: FontSize;
+  conversationsPanelOpen: boolean;
 
   // Actions
   toggleSidebar: () => void;
   setActiveView: (view: View) => void;
   setFontSize: (size: FontSize) => void;
+  toggleConversationsPanel: () => void;
+  setConversationsPanelOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -21,6 +24,7 @@ export const useUIStore = create<UIState>()(
       sidebarCollapsed: false,
       activeView: "chat",
       fontSize: "medium",
+      conversationsPanelOpen: false,
 
       toggleSidebar: () =>
         set((state) => ({
@@ -30,12 +34,20 @@ export const useUIStore = create<UIState>()(
       setActiveView: (view) => set({ activeView: view }),
 
       setFontSize: (fontSize) => set({ fontSize }),
+
+      toggleConversationsPanel: () =>
+        set((state) => ({
+          conversationsPanelOpen: !state.conversationsPanelOpen,
+        })),
+
+      setConversationsPanelOpen: (open) => set({ conversationsPanelOpen: open }),
     }),
     {
       name: "assistant-pastoral-ui",
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
         fontSize: state.fontSize,
+        conversationsPanelOpen: state.conversationsPanelOpen,
       }),
     }
   )
