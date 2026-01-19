@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Document } from "@shared/types";
+import { getErrorMessage } from "../lib/error";
 
 interface DocumentsState {
   documents: Document[];
@@ -34,7 +35,7 @@ export const useDocumentsStore = create<DocumentsState>((set, _get) => ({
       const documents = await window.electronAPI.documents.getAll();
       set({ documents, isLoading: false });
     } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
+      set({ error: getErrorMessage(error), isLoading: false });
     }
   },
 
@@ -52,7 +53,7 @@ export const useDocumentsStore = create<DocumentsState>((set, _get) => ({
         searchResults: state.searchResults.filter((d) => d.id !== id),
       }));
     } catch (error) {
-      set({ error: (error as Error).message });
+      set({ error: getErrorMessage(error) });
     }
   },
 
@@ -60,7 +61,7 @@ export const useDocumentsStore = create<DocumentsState>((set, _get) => ({
     try {
       await window.electronAPI.documents.openExternal(id);
     } catch (error) {
-      set({ error: (error as Error).message });
+      set({ error: getErrorMessage(error) });
     }
   },
 
@@ -76,7 +77,7 @@ export const useDocumentsStore = create<DocumentsState>((set, _get) => ({
       const results = await window.electronAPI.search.query(query);
       set({ searchResults: results, isSearching: false });
     } catch (error) {
-      set({ error: (error as Error).message, isSearching: false });
+      set({ error: getErrorMessage(error), isSearching: false });
     }
   },
 

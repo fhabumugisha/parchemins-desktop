@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getCredits, updateCredits, searchDocuments, getDocumentById, getAllDocuments } from './database.service';
+import { getCredits, updateCredits, searchDocuments, getDocumentById, getRecentDocuments } from './database.service';
 import { retrieveApiKey, hasApiKey } from './secure-storage.service';
 import type { ChatResponse } from '../../shared/types';
 import { MAX_CONTEXT_DOCUMENTS, TOKENS_PER_CREDIT } from '../../shared/constants';
@@ -41,10 +41,10 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   // Recherche par mots-clés
   let relevantDocs = searchDocuments(request.message, MAX_CONTEXT_DOCUMENTS);
 
-  // Fallback: si aucun résultat, charger tous les documents
+  // Fallback: si aucun résultat, charger les documents récents avec LIMIT SQL
   if (relevantDocs.length === 0) {
-    const allDocs = getAllDocuments().slice(0, MAX_CONTEXT_DOCUMENTS);
-    relevantDocs = allDocs.map((doc) => ({
+    const recentDocs = getRecentDocuments(MAX_CONTEXT_DOCUMENTS);
+    relevantDocs = recentDocs.map((doc) => ({
       ...doc,
       rank: 0,
       snippet: doc.content.substring(0, 200) + '...',
@@ -77,12 +77,13 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       messages,
     });
 
-    const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+    const usage = response.usage;
+    const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
     const creditsUsed = Math.ceil(tokensUsed / TOKENS_PER_CREDIT);
     updateCredits(-creditsUsed);
 
     const textContent = response.content.find((c) => c.type === 'text');
-    const responseText = textContent?.type === 'text' ? textContent.text : '';
+    const responseText = textContent && textContent.type === 'text' ? textContent.text : '';
 
     return {
       response: responseText,
@@ -130,17 +131,21 @@ export async function summarizeDocument(documentId: number): Promise<string> {
     ],
   });
 
-  const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+  const usage = response.usage;
+  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
   const creditsUsed = Math.ceil(tokensUsed / TOKENS_PER_CREDIT);
   updateCredits(-creditsUsed);
 
   const textContent = response.content.find((c) => c.type === 'text');
-  return textContent?.type === 'text' ? textContent.text : '';
+  return textContent && textContent.type === 'text' ? textContent.text : '';
 }
+
+// Timeout for API key validation (30 seconds)
+const API_KEY_TEST_TIMEOUT_MS = 30000;
 
 export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
-    const testClient = new Anthropic({ apiKey });
+    const testClient = new Anthropic({ apiKey, timeout: API_KEY_TEST_TIMEOUT_MS });
     await testClient.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 10,

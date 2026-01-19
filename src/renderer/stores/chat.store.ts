@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ChatResponse } from '@shared/types';
+import { getErrorMessage } from '../lib/error';
 
 interface ChatMessage {
   id: string;
@@ -65,17 +66,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isLoading: false,
       }));
     } catch (error) {
+      const errorMsg = getErrorMessage(error);
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: (error as Error).message,
+        content: errorMsg,
         timestamp: new Date(),
         isError: true,
       };
 
       set((state) => ({
         messages: [...state.messages, errorMessage],
-        error: (error as Error).message,
+        error: errorMsg,
         isLoading: false,
       }));
     }
@@ -124,7 +126,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
     } catch (error) {
       set({
-        error: (error as Error).message,
+        error: getErrorMessage(error),
         isLoading: false,
       });
     }

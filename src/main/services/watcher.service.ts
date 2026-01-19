@@ -86,9 +86,14 @@ export async function startWatcher(
 export async function stopWatcher(): Promise<void> {
   if (watcher) {
     console.log('[Watcher] Stopping watcher');
-    await watcher.close();
-    watcher = null;
-    currentFolderPath = null;
+    try {
+      await watcher.close();
+    } catch (error) {
+      console.error('[Watcher] Error closing watcher:', error);
+    } finally {
+      watcher = null;
+      currentFolderPath = null;
+    }
   }
 }
 

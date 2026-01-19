@@ -49,16 +49,19 @@ const electronAPI = {
     set: (key: string, value: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, key, value),
     getAll: (): Promise<Settings & { hasApiKey: boolean; isEncryptionAvailable: boolean }> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_ALL),
-    saveApiKey: (apiKey: string): Promise<{ success: boolean }> => ipcRenderer.invoke('settings:saveApiKey', apiKey),
-    deleteApiKey: (): Promise<{ success: boolean }> => ipcRenderer.invoke('settings:deleteApiKey'),
-    hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
+    saveApiKey: (apiKey: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_API_KEY, apiKey),
+    deleteApiKey: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_DELETE_API_KEY),
+    hasApiKey: (): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_HAS_API_KEY),
     getAppInfo: (): Promise<{
       version: string;
       name: string;
       electronVersion: string;
       chromeVersion: string;
       nodeVersion: string;
-    }> => ipcRenderer.invoke('settings:getAppInfo'),
+    }> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_APP_INFO),
   },
 };
 

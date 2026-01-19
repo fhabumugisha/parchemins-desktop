@@ -14,23 +14,40 @@ import type { IndexingProgress, IndexingResult } from '../../shared/types';
 
 type ProgressCallback = (progress: IndexingProgress) => void;
 
-// Cancellation support
-let isCancelled = false;
+// Operation-specific cancellation support to avoid race conditions
+let currentOperationId = 0;
+let cancelledOperationId: number | null = null;
 
 export function cancelIndexing(): boolean {
-  if (!isCancelled) {
-    isCancelled = true;
+  if (currentOperationId > 0 && cancelledOperationId !== currentOperationId) {
+    cancelledOperationId = currentOperationId;
     return true;
   }
   return false;
 }
 
 export function isIndexingCancelled(): boolean {
-  return isCancelled;
+  return cancelledOperationId === currentOperationId;
 }
 
-function resetCancellation(): void {
-  isCancelled = false;
+function startNewOperation(): number {
+  currentOperationId++;
+  return currentOperationId;
+}
+
+function isOperationCancelled(operationId: number): boolean {
+  return cancelledOperationId === operationId;
+}
+
+function cleanupOperation(operationId: number): void {
+  // Only clear cancelled state if this operation was the one cancelled
+  if (cancelledOperationId === operationId) {
+    cancelledOperationId = null;
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function indexFolder(
@@ -38,53 +55,52 @@ export async function indexFolder(
   onProgress?: ProgressCallback,
   forceReindex = false
 ): Promise<IndexingResult> {
-  // Reset cancellation flag at start
-  resetCancellation();
-
+  const operationId = startNewOperation();
   const result: IndexingResult = { added: 0, updated: 0, removed: 0, errors: [], cancelled: false };
 
-  // Get all supported files recursively
-  const files = await getFilesRecursive(folderPath);
-  const supportedFiles = files.filter(f =>
-    SUPPORTED_EXTENSIONS.includes(path.extname(f).toLowerCase())
-  );
+  try {
+    // Get all supported files recursively
+    const files = await getFilesRecursive(folderPath);
+    const supportedFiles = files.filter(f =>
+      SUPPORTED_EXTENSIONS.includes(path.extname(f).toLowerCase())
+    );
 
-  // Index each file
-  for (let i = 0; i < supportedFiles.length; i++) {
-    // Check for cancellation
-    if (isCancelled) {
-      result.cancelled = true;
-      break;
+    // Index each file
+    for (let i = 0; i < supportedFiles.length; i++) {
+      // Check for cancellation with operation-specific token
+      if (isOperationCancelled(operationId)) {
+        result.cancelled = true;
+        break;
+      }
+
+      const filePath = supportedFiles[i];
+
+      onProgress?.({
+        total: supportedFiles.length,
+        current: i + 1,
+        currentFile: path.basename(filePath),
+      });
+
+      try {
+        const status = await indexFile(filePath, forceReindex);
+        if (status === 'added') result.added++;
+        else if (status === 'updated') result.updated++;
+      } catch (error) {
+        const errorMessage = `${path.basename(filePath)}: ${getErrorMessage(error)}`;
+        result.errors.push(errorMessage);
+        console.error('[Indexer] Indexing error:', errorMessage);
+      }
     }
 
-    const filePath = supportedFiles[i];
-
-    onProgress?.({
-      total: supportedFiles.length,
-      current: i + 1,
-      currentFile: path.basename(filePath),
-    });
-
-    try {
-      const status = await indexFile(filePath, forceReindex);
-      if (status === 'added') result.added++;
-      else if (status === 'updated') result.updated++;
-    } catch (error) {
-      const errorMessage = `${path.basename(filePath)}: ${(error as Error).message}`;
-      result.errors.push(errorMessage);
-      console.error('Indexing error:', errorMessage);
+    // Remove deleted documents (only if not cancelled)
+    if (!isOperationCancelled(operationId)) {
+      result.removed = await removeDeletedDocuments(folderPath);
     }
+
+    return result;
+  } finally {
+    cleanupOperation(operationId);
   }
-
-  // Remove deleted documents (only if not cancelled)
-  if (!isCancelled) {
-    result.removed = await removeDeletedDocuments(folderPath);
-  }
-
-  // Reset cancellation flag at end
-  resetCancellation();
-
-  return result;
 }
 
 export async function forceReindexFolder(
@@ -156,12 +172,18 @@ async function getFilesRecursive(dir: string): Promise<string[]> {
 }
 
 async function removeDeletedDocuments(folderPath: string): Promise<number> {
+  // Normalize the folder path for consistent comparison
+  const normalizedFolderPath = path.normalize(folderPath);
   const documents = getAllDocuments();
   let removed = 0;
 
   for (const doc of documents) {
-    // Only check documents within the watched folder
-    if (!doc.path.startsWith(folderPath)) continue;
+    // Normalize document path and check if it's within the watched folder
+    const normalizedDocPath = path.normalize(doc.path);
+    if (!normalizedDocPath.startsWith(normalizedFolderPath + path.sep) &&
+        normalizedDocPath !== normalizedFolderPath) {
+      continue;
+    }
 
     try {
       await fs.access(doc.path);
@@ -179,7 +201,7 @@ export async function reindexFile(filePath: string): Promise<void> {
   try {
     await indexFile(filePath);
   } catch (error) {
-    console.error('Failed to reindex file:', filePath, error);
+    console.error('[Indexer] Failed to reindex file:', filePath, error);
   }
 }
 

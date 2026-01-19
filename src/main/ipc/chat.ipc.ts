@@ -2,10 +2,25 @@ import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import { chat, summarizeDocument, isApiKeyConfigured, testApiKey } from '../services/claude.service';
 
+// Constants for input validation
+const MAX_MESSAGE_LENGTH = 50000;
+const MAX_HISTORY_LENGTH = 100;
+
 export function registerChatHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.CHAT_SEND,
     async (_, message: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+      // Input validation
+      if (!message || typeof message !== 'string') {
+        throw new Error('Message invalide');
+      }
+      if (message.length > MAX_MESSAGE_LENGTH) {
+        throw new Error(`Message trop long (max ${MAX_MESSAGE_LENGTH} caractères)`);
+      }
+      if (history && history.length > MAX_HISTORY_LENGTH) {
+        throw new Error(`Historique trop long (max ${MAX_HISTORY_LENGTH} messages)`);
+      }
+
       if (!isApiKeyConfigured()) {
         throw new Error('Cle API non configuree');
       }

@@ -20,6 +20,7 @@ export default [
       globals: {
         window: 'readonly',
         document: 'readonly',
+        navigator: 'readonly',
         console: 'readonly',
         process: 'readonly',
         __dirname: 'readonly',

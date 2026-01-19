@@ -121,6 +121,12 @@ export function getAllDocuments(): Document[] {
     .all() as Document[];
 }
 
+export function getRecentDocuments(limit: number): Document[] {
+  return getDb()
+    .prepare('SELECT * FROM documents ORDER BY date DESC, title ASC LIMIT ?')
+    .all(limit) as Document[];
+}
+
 export function getDocumentById(id: number): Document | undefined {
   return getDb()
     .prepare('SELECT * FROM documents WHERE id = ?')
@@ -143,9 +149,15 @@ export function insertDocument(doc: Omit<Document, 'id' | 'indexed_at' | 'update
   return result.lastInsertRowid as number;
 }
 
+// Whitelist of allowed columns for dynamic updates
+const DOCUMENT_UPDATE_COLUMNS = new Set([
+  'path', 'title', 'content', 'date', 'bible_ref', 'word_count', 'hash'
+]);
+
 export function updateDocument(id: number, doc: Partial<Document>): void {
+  // Filter to only allowed columns
   const fields = Object.keys(doc)
-    .filter(k => k !== 'id' && k !== 'indexed_at')
+    .filter(k => DOCUMENT_UPDATE_COLUMNS.has(k))
     .map(k => `${k} = @${k}`)
     .join(', ');
 
@@ -198,17 +210,20 @@ export function searchDocuments(
   limit = 20
 ): (Document & { rank: number; snippet: string })[] {
   // Escape special FTS5 characters to prevent syntax errors
+  // Include : which FTS5 interprets as column prefix
   const escapedQuery = query
     .replace(/['"]/g, '')
-    .replace(/[(){}[\]^~*?:\\]/g, ' ')
+    .replace(/[(){}[\]^~*?:\\:]/g, ' ')
     .trim();
 
   if (!escapedQuery) return [];
 
   // Use prefix matching for better results
+  // Wrap each term in quotes to prevent FTS5 operator interpretation
   const searchTerms = escapedQuery
     .split(/\s+/)
-    .map(term => `${term}*`)
+    .filter(term => term.length > 0)
+    .map(term => `"${term}"*`)
     .join(' ');
 
   return getDb()
@@ -227,9 +242,11 @@ export function searchDocuments(
 }
 
 export function searchByBibleRef(ref: string): Document[] {
+  // Escape LIKE wildcards to prevent SQL injection
+  const escapedRef = ref.replace(/[%_\\]/g, '\\$&');
   return getDb()
-    .prepare('SELECT * FROM documents WHERE bible_ref LIKE ? ORDER BY date DESC')
-    .all(`%${ref}%`) as Document[];
+    .prepare('SELECT * FROM documents WHERE bible_ref LIKE ? ESCAPE \'\\\' ORDER BY date DESC')
+    .all(`%${escapedRef}%`) as Document[];
 }
 
 // ============ CONVERSATIONS ============
@@ -294,10 +311,17 @@ export function getCredits(): number {
 }
 
 export function updateCredits(delta: number): number {
-  getDb()
-    .prepare('UPDATE credits SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1')
-    .run(delta);
-  return getCredits();
+  // Use transaction for atomic read-after-write
+  const updateAndGet = getDb().transaction(() => {
+    getDb()
+      .prepare('UPDATE credits SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1')
+      .run(delta);
+    const result = getDb()
+      .prepare('SELECT balance FROM credits WHERE id = 1')
+      .get() as { balance: number } | undefined;
+    return result?.balance ?? 0;
+  });
+  return updateAndGet();
 }
 
 export function setCredits(amount: number): void {

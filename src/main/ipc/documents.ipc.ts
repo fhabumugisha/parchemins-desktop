@@ -1,4 +1,5 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron';
+import fs from 'fs/promises';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import {
   getAllDocuments,
@@ -30,12 +31,16 @@ export function registerDocumentsHandlers(): void {
   });
 
   // Open document in external app
-  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_OPEN_EXTERNAL, async (_, filePath: string) => {
+  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_OPEN_EXTERNAL, async (_, id: number) => {
     try {
-      await shell.openPath(filePath);
+      const doc = getDocumentById(id);
+      if (!doc) {
+        return { success: false, error: 'Document not found' };
+      }
+      await shell.openPath(doc.path);
       return { success: true };
     } catch (error) {
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -59,6 +64,16 @@ export function registerDocumentsHandlers(): void {
   // Index folder
   ipcMain.handle(IPC_CHANNELS.INDEXER_INDEX_FOLDER, async (event, folderPath: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
+
+    // Validate folder path exists and is a directory
+    try {
+      const stat = await fs.stat(folderPath);
+      if (!stat.isDirectory()) {
+        return { added: 0, updated: 0, removed: 0, errors: ['Le chemin sélectionné n\'est pas un dossier'] };
+      }
+    } catch {
+      return { added: 0, updated: 0, removed: 0, errors: ['Le dossier n\'existe pas ou n\'est pas accessible'] };
+    }
 
     // Save the folder path in settings
     setSetting('sermons_folder', folderPath);

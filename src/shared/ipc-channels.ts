@@ -29,6 +29,10 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:getAll',
+  SETTINGS_SAVE_API_KEY: 'settings:saveApiKey',
+  SETTINGS_DELETE_API_KEY: 'settings:deleteApiKey',
+  SETTINGS_HAS_API_KEY: 'settings:hasApiKey',
+  SETTINGS_GET_APP_INFO: 'settings:getAppInfo',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

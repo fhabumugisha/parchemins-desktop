@@ -39,7 +39,7 @@ export function registerSettingsHandlers(): void {
   });
 
   // Save API key securely
-  ipcMain.handle('settings:saveApiKey', async (_, apiKey: string) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE_API_KEY, async (_, apiKey: string) => {
     // Test the key first
     const isValid = await testApiKey(apiKey);
     if (!isValid) {
@@ -52,19 +52,19 @@ export function registerSettingsHandlers(): void {
   });
 
   // Delete API key
-  ipcMain.handle('settings:deleteApiKey', () => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_DELETE_API_KEY, () => {
     deleteApiKey();
     resetClaudeClient();
     return { success: true };
   });
 
   // Check if API key exists
-  ipcMain.handle('settings:hasApiKey', () => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_HAS_API_KEY, () => {
     return hasApiKey();
   });
 
   // Get app info
-  ipcMain.handle('settings:getAppInfo', () => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_APP_INFO, () => {
     return {
       version: app.getVersion(),
       name: app.getName(),

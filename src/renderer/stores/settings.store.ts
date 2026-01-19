@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getErrorMessage } from '../lib/error';
 
 interface AppInfo {
   version: string;
@@ -46,7 +47,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         isLoading: false,
       });
     } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
+      set({ error: getErrorMessage(error), isLoading: false });
     }
   },
 
@@ -56,7 +57,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       await window.electronAPI.settings.saveApiKey(apiKey);
       set({ hasApiKey: true, isLoading: false });
     } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
+      set({ error: getErrorMessage(error), isLoading: false });
       throw error;
     }
   },
@@ -67,7 +68,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       await window.electronAPI.settings.deleteApiKey();
       set({ hasApiKey: false, isLoading: false });
     } catch (error) {
-      set({ error: (error as Error).message, isLoading: false });
+      set({ error: getErrorMessage(error), isLoading: false });
     }
   },
 
