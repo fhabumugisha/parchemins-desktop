@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import { messages } from "@shared/messages";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+import { Tooltip } from "@/components/common/Tooltip";
 
 interface DocumentItemProps {
   document: Document;
@@ -127,54 +128,77 @@ export function DocumentItem({ document }: DocumentItemProps) {
           )}
         />
 
-        <div className="flex-1 min-w-0">
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editedTitle}
-              onChange={(e) => setEditedTitle(e.target.value)}
-              onBlur={handleSaveTitle}
-              onKeyDown={handleKeyDown}
-              className="w-full font-medium text-sm text-gray-900 bg-white border border-burgundy/30 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-burgundy"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <h3
-              className={cn(
-                "font-medium text-sm truncate",
-                isSelected ? "text-burgundy" : "text-gray-900"
+        <Tooltip
+          content={
+            <div>
+              <div className="font-semibold text-white mb-2 leading-snug">{document.title}</div>
+              {document.date && (
+                <div className="text-xs text-gray-300 flex items-center gap-2 mt-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{formatDate(document.date)}</span>
+                </div>
               )}
-            >
-              {document.title}
-            </h3>
-          )}
-
-          <div className="flex items-center gap-3 mt-1 text-xs text-muted">
-            {document.date && (
-              <span className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                {formatDate(document.date)}
-              </span>
+              {document.bible_ref && (
+                <div className="text-xs text-gray-300 flex items-center gap-2 mt-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{document.bible_ref}</span>
+                </div>
+              )}
+            </div>
+          }
+          side="right"
+          delay={500}
+          wrapperClassName="flex-1 min-w-0"
+        >
+          <div className="flex-1 min-w-0">
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                onBlur={handleSaveTitle}
+                onKeyDown={handleKeyDown}
+                className="w-full font-medium text-sm text-gray-900 bg-white border border-burgundy/30 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-burgundy"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <h3
+                className={cn(
+                  "font-medium text-sm truncate",
+                  isSelected ? "text-burgundy" : "text-gray-900"
+                )}
+              >
+                {document.title}
+              </h3>
             )}
-            {document.bible_ref && (
-              <span className="flex items-center gap-1">
-                <BookOpen className="w-3 h-3" />
-                {document.bible_ref}
-              </span>
+
+            <div className="flex items-center gap-3 mt-1 text-xs text-muted">
+              {document.date && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {formatDate(document.date)}
+                </span>
+              )}
+              {document.bible_ref && (
+                <span className="flex items-center gap-1">
+                  <BookOpen className="w-3 h-3" />
+                  {document.bible_ref}
+                </span>
+              )}
+            </div>
+
+            {/* Show snippet if available (from search) */}
+            {(document as Document & { snippet?: string }).snippet && (
+              <p
+                className="mt-1 text-xs text-muted line-clamp-2"
+                dangerouslySetInnerHTML={{
+                  __html: (document as Document & { snippet?: string }).snippet!,
+                }}
+              />
             )}
           </div>
-
-          {/* Show snippet if available (from search) */}
-          {(document as Document & { snippet?: string }).snippet && (
-            <p
-              className="mt-1 text-xs text-muted line-clamp-2"
-              dangerouslySetInnerHTML={{
-                __html: (document as Document & { snippet?: string }).snippet!,
-              }}
-            />
-          )}
-        </div>
+        </Tooltip>
 
         {/* Action buttons */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

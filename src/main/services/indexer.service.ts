@@ -7,8 +7,12 @@ import {
   updateDocument,
   deleteDocument,
   getAllDocuments,
+  indexDocumentEmbedding,
+  removeDocumentEmbedding,
+  getDocumentsWithoutEmbeddings,
 } from './database.service';
 import { extractText } from '../extractors';
+import { generateEmbedding, initializeEmbeddings } from './embedding.service';
 import { SUPPORTED_EXTENSIONS } from '../../shared/constants';
 import type { IndexingProgress, IndexingResult } from '../../shared/types';
 
@@ -59,6 +63,9 @@ export async function indexFolder(
   const result: IndexingResult = { added: 0, updated: 0, removed: 0, errors: [], cancelled: false };
 
   try {
+    // Initialize embedding model before starting indexation
+    await initializeEmbeddings();
+
     // Get all supported files recursively
     const files = await getFilesRecursive(folderPath);
     const supportedFiles = files.filter(f =>
@@ -142,13 +149,28 @@ async function indexFile(filePath: string, forceReindex = false): Promise<'added
     hash,
   };
 
+  let docId: number;
+  let status: 'added' | 'updated';
+
   if (existing) {
     updateDocument(existing.id, doc);
-    return 'updated';
+    docId = existing.id;
+    status = 'updated';
   } else {
-    insertDocument(doc);
-    return 'added';
+    docId = insertDocument(doc);
+    status = 'added';
   }
+
+  // Generate and store embedding for vector search
+  try {
+    const embedding = await generateEmbedding(doc.content);
+    indexDocumentEmbedding(docId, embedding);
+  } catch (error) {
+    console.error('[Indexer] Failed to generate embedding for document:', docId, error);
+    // Don't fail the indexing if embedding generation fails
+  }
+
+  return status;
 }
 
 async function getFilesRecursive(dir: string): Promise<string[]> {
@@ -208,6 +230,39 @@ export async function reindexFile(filePath: string): Promise<void> {
 export function removeFileFromIndex(filePath: string): void {
   const doc = getDocumentByPath(filePath);
   if (doc) {
+    removeDocumentEmbedding(doc.id);
     deleteDocument(doc.id);
   }
+}
+
+export async function indexMissingEmbeddings(
+  onProgress?: ProgressCallback
+): Promise<{ indexed: number; errors: string[] }> {
+  // Initialize embedding model
+  await initializeEmbeddings();
+
+  const documents = getDocumentsWithoutEmbeddings();
+  const result = { indexed: 0, errors: [] as string[] };
+
+  for (let i = 0; i < documents.length; i++) {
+    const doc = documents[i];
+
+    onProgress?.({
+      total: documents.length,
+      current: i + 1,
+      currentFile: doc.title,
+    });
+
+    try {
+      const embedding = await generateEmbedding(doc.content);
+      indexDocumentEmbedding(doc.id, embedding);
+      result.indexed++;
+    } catch (error) {
+      const errorMessage = `${doc.title}: ${getErrorMessage(error)}`;
+      result.errors.push(errorMessage);
+      console.error('[Indexer] Embedding error:', errorMessage);
+    }
+  }
+
+  return result;
 }

@@ -80,6 +80,7 @@ export const messages = {
       description:
         "Pour utiliser l'assistant IA, vous devez configurer votre clé d'accès IA. Obtenez-en une sur",
       configLater: "Vous pourrez configurer la clé d'accès plus tard dans les paramètres.",
+      encryptionUnavailable: "Le stockage sécurisé n'est pas disponible sur ce système. La fonctionnalité IA est désactivée.",
     },
 
     // Affichage
@@ -93,15 +94,21 @@ export const messages = {
 
     // Crédits
     credits: {
-      title: 'Crédits',
+      title: 'Crédits & Usage',
       count: (n: number) => `${n} crédit${n > 1 ? 's' : ''}`,
       description: "1 crédit = 1 question à l'assistant IA",
       buyCredits: 'Obtenir des crédits',
       buyCreditsComingSoon: 'Bientôt disponible',
+      resetCredits: 'Réinitialiser les crédits',
+      resetSuccess: 'Crédits réinitialisés à 100',
       warning: (n: number) => `Attention : il vous reste seulement ${n} crédit${n > 1 ? 's' : ''}.`,
       exhausted: 'Crédits épuisés',
       exhaustedDesc: "Vous pouvez toujours rechercher et consulter vos sermons. L'assistant IA sera disponible dès que vous aurez des crédits.",
       searchStillWorks: 'La recherche dans vos sermons reste disponible',
+      usageTitle: 'Utilisation (30 derniers jours)',
+      totalCost: (cost: number) => `Coût total : ${cost.toFixed(4)} $`,
+      totalQuestions: (n: number) => `${n} question${n > 1 ? 's' : ''} posée${n > 1 ? 's' : ''}`,
+      avgCost: (cost: number) => `Moy. ${cost.toFixed(4)} $/question`,
     },
 
     // À propos
@@ -183,6 +190,9 @@ export const messages = {
     apiKeyNotConfigured: "Clé d'accès IA non configurée. Veuillez la configurer dans les paramètres.",
     apiKeyInvalid: "Clé d'accès invalide. Vérifiez et réessayez.",
     rateLimitReached: 'Limite de requêtes atteinte. Réessayez dans quelques instants.',
+    encryptionUnavailable: "Le stockage sécurisé n'est pas disponible sur ce système. Impossible d'enregistrer la clé.",
+    securityError: 'Erreur de sécurité. Veuillez réessayer.',
+    aiServiceError: "Le service IA est temporairement indisponible. Réessayez plus tard.",
     genericError: 'Une erreur est survenue',
     unknownError: 'Erreur inconnue',
     reload: "Recharger l'application",

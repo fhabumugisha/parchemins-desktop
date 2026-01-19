@@ -17,7 +17,7 @@ interface ChatState {
   error: string | null;
   isApiConfigured: boolean;
 
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, referencedDocumentIds?: number[]) => Promise<void>;
   clearChat: () => void;
   checkApiConfiguration: () => Promise<void>;
   summarizeDocument: (documentId: number, documentTitle: string) => Promise<void>;
@@ -29,7 +29,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   error: null,
   isApiConfigured: false,
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, referencedDocumentIds = []) => {
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -51,7 +51,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: m.content,
         }));
 
-      const response: ChatResponse = await window.electronAPI.chat.send(content, history);
+      const response: ChatResponse = await window.electronAPI.chat.send(content, history, referencedDocumentIds);
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),

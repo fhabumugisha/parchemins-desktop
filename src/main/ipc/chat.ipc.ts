@@ -9,7 +9,7 @@ const MAX_HISTORY_LENGTH = 100;
 export function registerChatHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.CHAT_SEND,
-    async (_, message: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+    async (_, message: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>, referencedDocumentIds?: number[]) => {
       // Input validation
       if (!message || typeof message !== 'string') {
         throw new Error('Message invalide');
@@ -28,6 +28,7 @@ export function registerChatHandlers(): void {
       return await chat({
         message,
         conversationHistory: history,
+        referencedDocumentIds,
       });
     }
   );

@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { useChatStore } from '@/stores/chat.store';
 import { useCreditsStore } from '@/stores/credits.store';
 import { useUIStore } from '@/stores/ui.store';
+import { useDocumentsStore } from '@/stores/documents.store';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { WelcomeMessage } from './WelcomeMessage';
@@ -16,26 +17,28 @@ export function ChatPanel() {
   const { messages: chatMessages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration, clearChat } = useChatStore();
   const { credits, fetchCredits } = useCreditsStore();
   const { setActiveView } = useUIStore();
+  const { fetchDocuments } = useDocumentsStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { confirm, dialogProps } = useConfirmDialog();
 
   useEffect(() => {
     checkApiConfiguration();
     fetchCredits();
-  }, [checkApiConfiguration, fetchCredits]);
+    fetchDocuments();
+  }, [checkApiConfiguration, fetchCredits, fetchDocuments]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (content: string, referencedDocumentIds: number[] = []) => {
     if (!isApiConfigured) {
       return;
     }
     if (credits <= 0) {
       return;
     }
-    await sendMessage(content);
+    await sendMessage(content, referencedDocumentIds);
     fetchCredits();
   };
 

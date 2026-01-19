@@ -15,6 +15,12 @@ export const IPC_CHANNELS = {
 
   // Recherche
   SEARCH_QUERY: 'search:query',
+  SEARCH_SEMANTIC: 'search:semantic',
+  SEARCH_HYBRID: 'search:hybrid',
+
+  // Embeddings
+  EMBEDDINGS_INDEX_MISSING: 'embeddings:indexMissing',
+  EMBEDDINGS_GET_STATS: 'embeddings:getStats',
 
   // Chat
   CHAT_SEND: 'chat:send',
@@ -25,6 +31,12 @@ export const IPC_CHANNELS = {
   // Credits
   CREDITS_GET: 'credits:get',
   CREDITS_PURCHASE: 'credits:purchase',
+  CREDITS_RESET: 'credits:reset',
+
+  // Usage stats
+  USAGE_GET_STATS: 'usage:getStats',
+  USAGE_GET_BY_MONTH: 'usage:getByMonth',
+  USAGE_GET_TODAY: 'usage:getToday',
 
   // Parametres
   SETTINGS_GET: 'settings:get',

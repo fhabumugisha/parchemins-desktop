@@ -26,7 +26,7 @@ export function SettingsPanel() {
     deleteApiKey,
     fetchAppInfo,
   } = useSettingsStore();
-  const { credits } = useCreditsStore();
+  const { credits, usageStats, resetCredits, fetchUsageStats } = useCreditsStore();
   const { selectFolder, indexFolder, forceReindex, cancelIndexing, isIndexing, progress } = useIndexerStore();
   const { fetchDocuments } = useDocumentsStore();
   const { confirm, dialogProps } = useConfirmDialog();
@@ -40,7 +40,8 @@ export function SettingsPanel() {
   useEffect(() => {
     fetchSettings();
     fetchAppInfo();
-  }, [fetchSettings, fetchAppInfo]);
+    fetchUsageStats();
+  }, [fetchSettings, fetchAppInfo, fetchUsageStats]);
 
   const handleSaveApiKey = async () => {
     setSaveError(null);
@@ -94,6 +95,11 @@ export function SettingsPanel() {
     }
   };
 
+  const handleResetCredits = async () => {
+    await resetCredits();
+    showToast('success', messages.settings.credits.resetSuccess);
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-cream">
       <div className="max-w-2xl xl:max-w-3xl 2xl:max-w-4xl mx-auto p-6">
@@ -115,19 +121,24 @@ export function SettingsPanel() {
             <h2 className="text-lg font-medium">{messages.settings.apiKey.title}</h2>
           </div>
 
-          {hasApiKey ? (
+          {!isEncryptionAvailable ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-sm">{messages.settings.apiKey.encryptionUnavailable}</span>
+              </div>
+            </div>
+          ) : hasApiKey ? (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-green-600">
                 <CheckCircle className="w-4 h-4" />
                 <span>{messages.settings.apiKey.configured}</span>
               </div>
 
-              {isEncryptionAvailable && (
-                <div className="flex items-center gap-2 text-sm text-muted">
-                  <Shield className="w-4 h-4" />
-                  <span>{messages.settings.apiKey.securelyStored}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-sm text-muted">
+                <Shield className="w-4 h-4" />
+                <span>{messages.settings.apiKey.securelyStored}</span>
+              </div>
 
               <div className="flex gap-3">
                 <Button variant="secondary" size="sm" onClick={() => setShowApiKeyInput(true)}>
@@ -162,7 +173,7 @@ export function SettingsPanel() {
             </div>
           )}
 
-          {showApiKeyInput && (
+          {showApiKeyInput && isEncryptionAvailable && (
             <div className="mt-4 space-y-3">
               <input
                 type="password"
@@ -307,9 +318,34 @@ export function SettingsPanel() {
           <div className="space-y-4">
             <p className="text-2xl font-bold text-burgundy">{messages.settings.credits.count(credits)}</p>
             <p className="text-sm text-muted">{messages.settings.credits.description}</p>
-            <Button variant="secondary" size="sm" disabled>
-              {messages.settings.credits.buyCredits}
-            </Button>
+
+            {/* Usage Stats */}
+            {usageStats && usageStats.totalQuestions > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium text-gray-700">{messages.settings.credits.usageTitle}</p>
+                <div className="flex flex-wrap gap-4 text-sm text-muted">
+                  <span>{messages.settings.credits.totalQuestions(usageStats.totalQuestions)}</span>
+                  <span>{messages.settings.credits.totalCost(usageStats.totalCostUsd)}</span>
+                  <span>{messages.settings.credits.avgCost(usageStats.avgCostPerQuestion)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button variant="secondary" size="sm" disabled>
+                {messages.settings.credits.buyCredits}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResetCredits}
+                disabled={credits > 0}
+                className="text-burgundy hover:bg-burgundy/10"
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                {messages.settings.credits.resetCredits}
+              </Button>
+            </div>
           </div>
         </section>
 

@@ -56,3 +56,14 @@ export interface IndexingResult {
   errors: string[];
   cancelled?: boolean;
 }
+
+export interface SearchResultHybrid extends Document {
+  score: number;
+  matchType: 'exact' | 'semantic' | 'both';
+  snippet?: string;
+}
+
+export interface EmbeddingStats {
+  total: number;
+  indexed: number;
+}

@@ -15,7 +15,15 @@ export default defineConfig({
           build: {
             outDir: path.join(projectRoot, 'dist-electron/main'),
             rollupOptions: {
-              external: ['electron', 'better-sqlite3', 'electron-squirrel-startup', 'pdfjs-dist'],
+              external: [
+                'electron',
+                'better-sqlite3',
+                'electron-squirrel-startup',
+                'pdfjs-dist',
+                'sqlite-vec',
+                'onnxruntime-node',
+                '@xenova/transformers',
+              ],
             },
           },
         },

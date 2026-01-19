@@ -29,13 +29,28 @@ const electronAPI = {
 
   search: {
     query: (query: string): Promise<Document[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, query),
+    semantic: (query: string, options?: { limit?: number }): Promise<(Document & { distance: number })[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SEARCH_SEMANTIC, query, options),
+    hybrid: (query: string, options?: { limit?: number }): Promise<(Document & {
+      score: number;
+      matchType: 'exact' | 'semantic' | 'both';
+      snippet?: string;
+    })[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH_HYBRID, query, options),
+  },
+
+  embeddings: {
+    indexMissing: (): Promise<{ indexed: number; errors: string[] }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EMBEDDINGS_INDEX_MISSING),
+    getStats: (): Promise<{ total: number; indexed: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EMBEDDINGS_GET_STATS),
   },
 
   chat: {
     send: (
       message: string,
-      history?: Array<{ role: 'user' | 'assistant'; content: string }>
-    ): Promise<ChatResponse> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, message, history),
+      history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+      referencedDocumentIds?: number[]
+    ): Promise<ChatResponse> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, message, history, referencedDocumentIds),
     summarize: (documentId: number): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_SUMMARIZE, documentId),
     testApiKey: (apiKey: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_TEST_API_KEY, apiKey),
     isConfigured: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CHAT_IS_CONFIGURED),
@@ -44,6 +59,21 @@ const electronAPI = {
   credits: {
     get: (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.CREDITS_GET),
     purchase: (amount: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.CREDITS_PURCHASE, amount),
+    reset: (): Promise<{ success: boolean; balance: number }> => ipcRenderer.invoke(IPC_CHANNELS.CREDITS_RESET),
+  },
+
+  usage: {
+    getStats: (days?: number): Promise<{
+      totalQuestions: number;
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCostUsd: number;
+      avgCostPerQuestion: number;
+    }> => ipcRenderer.invoke(IPC_CHANNELS.USAGE_GET_STATS, days),
+    getByMonth: (): Promise<Array<{ month: string; questions: number; cost_usd: number }>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USAGE_GET_BY_MONTH),
+    getToday: (): Promise<{ questions: number; cost_usd: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.USAGE_GET_TODAY),
   },
 
   settings: {

@@ -1,26 +1,39 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getCredits, updateCredits, searchDocuments, getDocumentById, getRecentDocuments, getDocumentCount } from './database.service';
+import {
+  getCredits,
+  updateCredits,
+  searchDocuments,
+  searchDocumentsSemantic,
+  searchDocumentsHybrid,
+  getDocumentById,
+  getDocumentCount,
+  logUsage,
+} from './database.service';
+import { generateEmbedding, initializeEmbeddings } from './embedding.service';
 import { retrieveApiKey, hasApiKey } from './secure-storage.service';
 import type { ChatResponse } from '../../shared/types';
 import { MAX_CONTEXT_DOCUMENTS, TOKENS_PER_CREDIT } from '../../shared/constants';
 import { messages as i18n } from '../../shared/messages';
 import { prompts, type SermonContext } from '../../shared/prompts';
 
-let client: Anthropic | null = null;
-
-function getClient(): Anthropic {
-  if (!client) {
-    const apiKey = retrieveApiKey();
-    if (!apiKey) {
-      throw new Error(i18n.errors.apiKeyNotConfigured);
-    }
-    client = new Anthropic({ apiKey });
+/**
+ * Create a new Anthropic client for each request
+ * This ensures the API key is not cached in memory longer than necessary
+ */
+function createClient(): Anthropic {
+  const apiKey = retrieveApiKey();
+  if (!apiKey) {
+    throw new Error(i18n.errors.apiKeyNotConfigured);
   }
-  return client;
+  return new Anthropic({ apiKey });
 }
 
+/**
+ * No-op for backwards compatibility
+ * Client is no longer cached, so nothing to reset
+ */
 export function resetClaudeClient(): void {
-  client = null;
+  // No-op: client is now created fresh for each request
 }
 
 export function isApiKeyConfigured(): boolean {
@@ -30,6 +43,7 @@ export function isApiKeyConfigured(): boolean {
 interface ChatRequest {
   message: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  referencedDocumentIds?: number[];
 }
 
 export async function chat(request: ChatRequest): Promise<ChatResponse> {
@@ -38,29 +52,67 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     throw new Error('Credits insuffisants. Veuillez acheter des credits pour continuer.');
   }
 
-  // Recherche par mots-clés
-  let relevantDocs = searchDocuments(request.message, MAX_CONTEXT_DOCUMENTS);
+  // Récupérer les sermons référencés (contenu intégral)
+  const referencedSermons: SermonContext[] = [];
+  const hasReferencedSermons = request.referencedDocumentIds && request.referencedDocumentIds.length > 0;
 
-  // Fallback: si aucun résultat, charger les documents récents avec LIMIT SQL
-  if (relevantDocs.length === 0) {
-    const recentDocs = getRecentDocuments(MAX_CONTEXT_DOCUMENTS);
-    relevantDocs = recentDocs.map((doc) => ({
-      ...doc,
-      rank: 0,
-      snippet: doc.content.substring(0, 200) + '...',
+  if (hasReferencedSermons) {
+    for (const docId of request.referencedDocumentIds!) {
+      const doc = getDocumentById(docId);
+      if (doc) {
+        referencedSermons.push({
+          title: doc.title,
+          date: doc.date,
+          bible_ref: doc.bible_ref,
+          content: doc.content, // Contenu intégral
+        });
+      }
+    }
+  }
+
+  // Si des sermons sont référencés, on les utilise EXCLUSIVEMENT (pas de recherche)
+  // Sinon, recherche hybride (FTS5 + sémantique)
+  let sermonContexts: SermonContext[] = [];
+  let relevantDocsWithScore: Array<{ id: number; title: string; content: string; score: number }> = [];
+
+  if (!hasReferencedSermons) {
+    // Recherche hybride (FTS5 + sémantique)
+    await initializeEmbeddings();
+    const queryEmbedding = await generateEmbedding(request.message);
+
+    const ftsResults = searchDocuments(request.message, MAX_CONTEXT_DOCUMENTS);
+    const vectorResults = searchDocumentsSemantic(queryEmbedding, MAX_CONTEXT_DOCUMENTS);
+    const relevantDocs = searchDocumentsHybrid(ftsResults, vectorResults, MAX_CONTEXT_DOCUMENTS);
+
+    console.log('[Chat] Hybrid search results:', relevantDocs.map(d => ({
+      id: d.id,
+      title: d.title,
+      score: d.score,
+      matchType: d.matchType
+    })));
+
+    // Tous les documents sont envoyés à Claude comme contexte
+    sermonContexts = relevantDocs.map((doc) => ({
+      title: doc.title,
+      date: doc.date,
+      bible_ref: doc.bible_ref,
+      content: doc.content,
+    }));
+
+    // Conserver les docs avec leur score pour filtrer les sources
+    relevantDocsWithScore = relevantDocs.map((doc) => ({
+      id: doc.id,
+      title: doc.title,
+      content: doc.content,
+      score: doc.score,
     }));
   }
 
-  // Convertir les documents en SermonContext pour les prompts
-  const sermonContexts: SermonContext[] = relevantDocs.map((doc) => ({
-    title: doc.title,
-    date: doc.date,
-    bible_ref: doc.bible_ref,
-    content: doc.content,
-  }));
-
   const totalDocumentCount = getDocumentCount();
-  const systemPrompt = prompts.chatSystem(sermonContexts, totalDocumentCount);
+  // Si sermons référencés: referencedSermons uniquement, sinon: sermonContexts de la recherche
+  const systemPrompt = hasReferencedSermons
+    ? prompts.chatSystemWithReferences(referencedSermons, totalDocumentCount)
+    : prompts.chatSystem(sermonContexts, totalDocumentCount);
 
   const messages: Anthropic.MessageParam[] = [
     ...(request.conversationHistory || []).map((msg) => ({
@@ -71,7 +123,8 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   ];
 
   try {
-    const response = await getClient().messages.create({
+    const client = createClient();
+    const response = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 2048,
       system: systemPrompt,
@@ -79,23 +132,57 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     });
 
     const usage = response.usage;
-    const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+    const inputTokens = usage?.input_tokens ?? 0;
+    const outputTokens = usage?.output_tokens ?? 0;
+    const tokensUsed = inputTokens + outputTokens;
     const creditsUsed = Math.ceil(tokensUsed / TOKENS_PER_CREDIT);
     updateCredits(-creditsUsed);
 
+    // Log usage for cost tracking
+    logUsage(inputTokens, outputTokens);
+
     const textContent = response.content.find((c) => c.type === 'text');
-    const responseText = textContent && textContent.type === 'text' ? textContent.text : '';
+    const rawResponseText = textContent && textContent.type === 'text' ? textContent.text : '';
+
+    // Parser les sources utilisées par Claude
+    const sourceMatch = rawResponseText.match(/\[SOURCES:\s*([^\]]+)\]/i);
+    let usedIds: number[] = [];
+    if (sourceMatch && sourceMatch[1].toLowerCase() !== 'aucune') {
+      usedIds = sourceMatch[1]
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n));
+    }
+
+    // Nettoyer la réponse (retirer le tag [SOURCES:...])
+    const responseText = rawResponseText.replace(/\s*\[SOURCES:[^\]]*\]\s*/gi, '').trim();
+
+    // Sources: sermons référencés OU résultats de recherche filtrés par IDs utilisés
+    let sources;
+    if (hasReferencedSermons) {
+      sources = referencedSermons.map((s, index) => ({
+        id: request.referencedDocumentIds![index],
+        title: s.title,
+        snippet: s.content.substring(0, 300) + '...',
+      }));
+    } else {
+      // Filtrer par IDs utilisés par Claude (IDs sont 1-indexed)
+      const usedDocs = relevantDocsWithScore.filter((_, index) => usedIds.includes(index + 1));
+
+      sources = usedDocs.map((doc) => ({
+        id: doc.id,
+        title: doc.title,
+        snippet: doc.content.substring(0, 200) + '...',
+      }));
+    }
 
     return {
       response: responseText,
       tokensUsed,
-      sources: relevantDocs.map((d) => ({
-        id: d.id,
-        title: d.title,
-        snippet: d.snippet || d.content.substring(0, 200) + '...',
-      })),
+      sources,
     };
   } catch (error) {
+    // Use generic error messages to avoid exposing implementation details
     if (error instanceof Anthropic.AuthenticationError) {
       throw new Error(i18n.errors.apiKeyInvalid);
     }
@@ -103,9 +190,10 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       throw new Error(i18n.errors.rateLimitReached);
     }
     if (error instanceof Anthropic.APIError) {
-      throw new Error(`Erreur IA: ${error.message}`);
+      // Generic message - don't expose API error details
+      throw new Error(i18n.errors.aiServiceError);
     }
-    throw error;
+    throw new Error(i18n.errors.genericError);
   }
 }
 
@@ -120,25 +208,44 @@ export async function summarizeDocument(documentId: number): Promise<string> {
     throw new Error('Document non trouve.');
   }
 
-  const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-5-20250929',
-    max_tokens: 1024,
-    system: prompts.summarizeSystem,
-    messages: [
-      {
-        role: 'user',
-        content: prompts.summarizeUser(doc.title, doc.content),
-      },
-    ],
-  });
+  try {
+    const client = createClient();
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 1024,
+      system: prompts.summarizeSystem,
+      messages: [
+        {
+          role: 'user',
+          content: prompts.summarizeUser(doc.title, doc.content),
+        },
+      ],
+    });
 
-  const usage = response.usage;
-  const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
-  const creditsUsed = Math.ceil(tokensUsed / TOKENS_PER_CREDIT);
-  updateCredits(-creditsUsed);
+    const usage = response.usage;
+    const inputTokens = usage?.input_tokens ?? 0;
+    const outputTokens = usage?.output_tokens ?? 0;
+    const tokensUsed = inputTokens + outputTokens;
+    const creditsUsed = Math.ceil(tokensUsed / TOKENS_PER_CREDIT);
+    updateCredits(-creditsUsed);
 
-  const textContent = response.content.find((c) => c.type === 'text');
-  return textContent && textContent.type === 'text' ? textContent.text : '';
+    // Log usage for cost tracking
+    logUsage(inputTokens, outputTokens);
+
+    const textContent = response.content.find((c) => c.type === 'text');
+    return textContent && textContent.type === 'text' ? textContent.text : '';
+  } catch (error) {
+    if (error instanceof Anthropic.AuthenticationError) {
+      throw new Error(i18n.errors.apiKeyInvalid);
+    }
+    if (error instanceof Anthropic.RateLimitError) {
+      throw new Error(i18n.errors.rateLimitReached);
+    }
+    if (error instanceof Anthropic.APIError) {
+      throw new Error(i18n.errors.aiServiceError);
+    }
+    throw new Error(i18n.errors.genericError);
+  }
 }
 
 // Timeout for API key validation (30 seconds)

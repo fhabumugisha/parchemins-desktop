@@ -10,7 +10,7 @@ export const TOKENS_PER_CREDIT = 1000;
 
 export const MAX_CONTEXT_TOKENS = 4000;
 
-export const MAX_CONTEXT_DOCUMENTS = 5;
+export const MAX_CONTEXT_DOCUMENTS = 10;
 
 // Liens externes
 export const EXTERNAL_LINKS = {

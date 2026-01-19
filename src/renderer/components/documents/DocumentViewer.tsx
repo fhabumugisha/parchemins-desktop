@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   ArrowLeft,
   ExternalLink,
@@ -6,7 +5,6 @@ import {
   BookOpen,
   Hash,
   Sparkles,
-  Loader2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useDocumentsStore } from "@/stores/documents.store";
@@ -14,14 +12,12 @@ import { useUIStore } from "@/stores/ui.store";
 import { useChatStore } from "@/stores/chat.store";
 import { cn } from "@/lib/cn";
 import { messages } from "@shared/messages";
-import { showToast } from "@/components/common/Toast";
 
 export function DocumentViewer() {
   const { selectedDocument, selectDocument, openDocumentExternal } =
     useDocumentsStore();
   const { setActiveView, fontSize } = useUIStore();
-  const { summarizeDocument } = useChatStore();
-  const [isSummarizing, setIsSummarizing] = useState(false);
+  const { sendMessage, isLoading: isChatLoading } = useChatStore();
 
   if (!selectedDocument) {
     return (
@@ -41,14 +37,10 @@ export function DocumentViewer() {
   };
 
   const handleSummarize = async () => {
-    setIsSummarizing(true);
-    try {
-      await summarizeDocument(selectedDocument.id, selectedDocument.title);
-      setActiveView("chat");
-      showToast("info", messages.chat.summarized(selectedDocument.title));
-    } finally {
-      setIsSummarizing(false);
-    }
+    // Envoyer un message avec la mention du sermon pour utiliser le contenu intégral
+    const messageContent = `Résume ce sermon @${selectedDocument.title}`;
+    setActiveView("chat");
+    await sendMessage(messageContent, [selectedDocument.id]);
   };
 
   // Format date
@@ -90,15 +82,11 @@ export function DocumentViewer() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSummarize}
-              disabled={isSummarizing}
+              disabled={isChatLoading}
               className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gold text-white rounded-lg hover:bg-gold/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSummarizing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
-              )}
-              <span>{isSummarizing ? messages.chat.thinking : messages.documents.summarize}</span>
+              <Sparkles className="w-4 h-4" />
+              <span>{messages.documents.summarize}</span>
             </button>
             <button
               onClick={handleOpenExternal}

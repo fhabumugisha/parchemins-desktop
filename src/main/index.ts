@@ -4,6 +4,7 @@ import { registerIpcHandlers } from './ipc';
 import { logger } from './utils/logger';
 import { initDatabase, closeDatabase } from './services/database.service';
 import { initWatcher, stopWatcher } from './services/watcher.service';
+import { migratePlaintextKey } from './services/secure-storage.service';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 if (require('electron-squirrel-startup')) {
@@ -18,6 +19,12 @@ async function bootstrap(): Promise<void> {
 
   // Initialize database first
   await initDatabase();
+
+  // Migrate any plaintext API keys to secure storage
+  const wasMigrated = migratePlaintextKey();
+  if (wasMigrated) {
+    logger.info('Plaintext API key removed for security. User will need to re-enter key.');
+  }
 
   // Register IPC handlers (after database is ready)
   registerIpcHandlers();

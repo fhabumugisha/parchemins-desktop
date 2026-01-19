@@ -6,12 +6,14 @@ import {
   getAllSettings,
   getCredits,
   updateCredits,
+  setCredits,
 } from '../services/database.service';
 import {
   storeApiKey,
   hasApiKey,
   deleteApiKey,
   isEncryptionAvailable,
+  canStoreApiKey,
 } from '../services/secure-storage.service';
 import { resetClaudeClient, testApiKey } from '../services/claude.service';
 import { messages } from '../../shared/messages';
@@ -40,6 +42,11 @@ export function registerSettingsHandlers(): void {
 
   // Save API key securely
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE_API_KEY, async (_, apiKey: string) => {
+    // Check if secure storage is available
+    if (!canStoreApiKey()) {
+      throw new Error(messages.errors.encryptionUnavailable);
+    }
+
     // Test the key first
     const isValid = await testApiKey(apiKey);
     if (!isValid) {
@@ -83,6 +90,13 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CREDITS_PURCHASE, (_, amount: number) => {
     const newBalance = updateCredits(amount);
     return { success: true, balance: newBalance };
+  });
+
+  // Reset credits to initial value (100)
+  ipcMain.handle(IPC_CHANNELS.CREDITS_RESET, () => {
+    const initialCredits = 100;
+    setCredits(initialCredits);
+    return { success: true, balance: initialCredits };
   });
 
   // Open external URL in default browser

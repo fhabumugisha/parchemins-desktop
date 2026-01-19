@@ -1,7 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { app } from 'electron';
+import * as sqliteVec from 'sqlite-vec';
 import type { Document, Conversation, Message } from '../../shared/types';
+import { getEmbeddingDimensions } from './embedding.service';
 
 let db: Database.Database | null = null;
 
@@ -16,6 +18,9 @@ export async function initDatabase(): Promise<void> {
   const dbPath = path.join(app.getPath('userData'), 'sermons.db');
 
   db = new Database(dbPath);
+
+  // Load sqlite-vec extension for vector search
+  sqliteVec.load(db);
 
   // Performance optimizations
   db.pragma('journal_mode = WAL');
@@ -106,11 +111,42 @@ function createTables(): void {
     -- Initialize credits if not exists
     INSERT OR IGNORE INTO credits (id, balance) VALUES (1, 100);
 
+    -- Usage logs table (tracking API costs)
+    CREATE TABLE IF NOT EXISTS usage_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      input_tokens INTEGER NOT NULL,
+      output_tokens INTEGER NOT NULL,
+      cost_usd REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Create indexes for performance
     CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
     CREATE INDEX IF NOT EXISTS idx_documents_date ON documents(date);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_usage_logs_created ON usage_logs(created_at);
+
+    -- Table for storing document embeddings
+    CREATE TABLE IF NOT EXISTS document_embeddings (
+      document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+      embedding BLOB NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  // Create vec0 virtual table for vector search (if not exists)
+  // vec0 virtual tables need to be created separately
+  const dimensions = getEmbeddingDimensions();
+  try {
+    getDb().exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS documents_vec USING vec0(
+        embedding float[${dimensions}]
+      );
+    `);
+  } catch (error) {
+    // Table might already exist with different schema, ignore
+    console.log('[Database] documents_vec table setup:', error);
+  }
 }
 
 // ============ DOCUMENTS ============
@@ -205,6 +241,30 @@ export function getCorpusStats(): {
 
 // ============ SEARCH ============
 
+// French stopwords to filter from search queries
+const FRENCH_STOPWORDS = new Set([
+  // Articles
+  'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'l',
+  // Prepositions
+  'à', 'a', 'au', 'aux', 'avec', 'dans', 'en', 'par', 'pour', 'sur', 'sous', 'vers', 'chez',
+  // Pronouns
+  'je', 'tu', 'il', 'elle', 'on', 'nous', 'vous', 'ils', 'elles',
+  'me', 'te', 'se', 'lui', 'leur', 'moi', 'toi', 'soi',
+  'ce', 'cet', 'cette', 'ces', 'ceci', 'cela', 'ça',
+  'qui', 'que', 'quoi', 'dont', 'où',
+  // Possessives
+  'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses', 'notre', 'nos', 'votre', 'vos', 'leur', 'leurs',
+  // Conjunctions
+  'et', 'ou', 'mais', 'donc', 'or', 'ni', 'car', 'si', 'comme', 'quand', 'lorsque',
+  // Common verbs
+  'est', 'sont', 'suis', 'es', 'sommes', 'êtes', 'être', 'etre',
+  'ai', 'as', 'a', 'avons', 'avez', 'ont', 'avoir',
+  'fait', 'faire', 'fais', 'faisons', 'faites', 'font',
+  // Adverbs & others
+  'ne', 'pas', 'plus', 'moins', 'très', 'bien', 'mal', 'tout', 'tous', 'toute', 'toutes',
+  'y', 'en', 'là', 'ici', 'alors', 'aussi', 'encore', 'même', 'autre', 'autres',
+]);
+
 export function searchDocuments(
   query: string,
   limit = 20
@@ -220,11 +280,15 @@ export function searchDocuments(
 
   // Use prefix matching for better results
   // Wrap each term in quotes to prevent FTS5 operator interpretation
+  // Filter out French stopwords to improve search relevance
   const searchTerms = escapedQuery
     .split(/\s+/)
-    .filter(term => term.length > 0)
+    .filter(term => term.length > 1 && !FRENCH_STOPWORDS.has(term.toLowerCase()))
     .map(term => `"${term}"*`)
     .join(' ');
+
+  // If all terms were filtered out, return empty results
+  if (!searchTerms) return [];
 
   return getDb()
     .prepare(`
@@ -247,6 +311,132 @@ export function searchByBibleRef(ref: string): Document[] {
   return getDb()
     .prepare('SELECT * FROM documents WHERE bible_ref LIKE ? ESCAPE \'\\\' ORDER BY date DESC')
     .all(`%${escapedRef}%`) as Document[];
+}
+
+// ============ VECTOR SEARCH ============
+
+export function indexDocumentEmbedding(documentId: number, embedding: Float32Array): void {
+  const embeddingBlob = Buffer.from(embedding.buffer);
+
+  // Store embedding in document_embeddings table
+  getDb()
+    .prepare(`
+      INSERT OR REPLACE INTO document_embeddings (document_id, embedding)
+      VALUES (?, ?)
+    `)
+    .run(documentId, embeddingBlob);
+
+  // Check if document already exists in vec table
+  const existing = getDb()
+    .prepare('SELECT rowid FROM documents_vec WHERE rowid = ?')
+    .get(documentId);
+
+  if (existing) {
+    // Delete and re-insert (vec0 doesn't support UPDATE)
+    getDb().prepare('DELETE FROM documents_vec WHERE rowid = ?').run(documentId);
+  }
+
+  // Insert into vec0 virtual table
+  getDb()
+    .prepare('INSERT INTO documents_vec (rowid, embedding) VALUES (?, ?)')
+    .run(documentId, embeddingBlob);
+}
+
+export function removeDocumentEmbedding(documentId: number): void {
+  getDb().prepare('DELETE FROM document_embeddings WHERE document_id = ?').run(documentId);
+  getDb().prepare('DELETE FROM documents_vec WHERE rowid = ?').run(documentId);
+}
+
+export function hasDocumentEmbedding(documentId: number): boolean {
+  const result = getDb()
+    .prepare('SELECT 1 FROM document_embeddings WHERE document_id = ?')
+    .get(documentId);
+  return !!result;
+}
+
+export function getDocumentsWithoutEmbeddings(): Document[] {
+  return getDb()
+    .prepare(`
+      SELECT d.* FROM documents d
+      LEFT JOIN document_embeddings de ON d.id = de.document_id
+      WHERE de.document_id IS NULL
+    `)
+    .all() as Document[];
+}
+
+export function searchDocumentsSemantic(
+  queryEmbedding: Float32Array,
+  limit = 10
+): (Document & { distance: number })[] {
+  const embeddingBlob = Buffer.from(queryEmbedding.buffer);
+
+  return getDb()
+    .prepare(`
+      SELECT
+        d.*,
+        vec_distance_cosine(dv.embedding, ?) as distance
+      FROM documents_vec dv
+      JOIN documents d ON d.id = dv.rowid
+      ORDER BY distance ASC
+      LIMIT ?
+    `)
+    .all(embeddingBlob, limit) as (Document & { distance: number })[];
+}
+
+export type SearchResultHybrid = Document & {
+  score: number;
+  matchType: 'exact' | 'semantic' | 'both';
+  snippet?: string;
+};
+
+export function searchDocumentsHybrid(
+  ftsResults: (Document & { rank: number; snippet: string })[],
+  vectorResults: (Document & { distance: number })[],
+  limit = 10
+): SearchResultHybrid[] {
+  const ftsIds = new Set(ftsResults.map(r => r.id));
+  const vectorIds = new Set(vectorResults.map(r => r.id));
+
+  const merged = new Map<number, SearchResultHybrid>();
+
+  // Add FTS results with high score (exact matches)
+  ftsResults.forEach((doc, i) => {
+    const score = 1 - (i / Math.max(ftsResults.length, 1)) * 0.5; // Score 1.0 -> 0.5
+    merged.set(doc.id, {
+      ...doc,
+      score: vectorIds.has(doc.id) ? score + 0.5 : score, // Boost if found in both
+      matchType: vectorIds.has(doc.id) ? 'both' : 'exact',
+      snippet: doc.snippet,
+    });
+  });
+
+  // Add vector results not present in FTS
+  vectorResults.forEach((doc, i) => {
+    if (!merged.has(doc.id)) {
+      const similarity = 1 - doc.distance; // Convert distance to similarity
+      const score = similarity * 0.5; // Semantic-only results get lower base score
+      merged.set(doc.id, {
+        ...doc,
+        score,
+        matchType: 'semantic',
+      });
+    }
+  });
+
+  // Sort by score and return top results
+  return Array.from(merged.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+export function getEmbeddingStats(): { total: number; indexed: number } {
+  const total = getDb()
+    .prepare('SELECT COUNT(*) as count FROM documents')
+    .get() as { count: number };
+  const indexed = getDb()
+    .prepare('SELECT COUNT(*) as count FROM document_embeddings')
+    .get() as { count: number };
+  return { total: total.count, indexed: indexed.count };
 }
 
 // ============ CONVERSATIONS ============
@@ -354,6 +544,102 @@ export function getAllSettings(): Record<string, string> {
 
 export function deleteSetting(key: string): void {
   getDb().prepare('DELETE FROM settings WHERE key = ?').run(key);
+}
+
+// ============ USAGE TRACKING ============
+
+// Anthropic pricing (USD per million tokens)
+const ANTHROPIC_PRICING = {
+  input: 3,    // $3 per million input tokens
+  output: 15,  // $15 per million output tokens
+};
+
+export interface UsageLog {
+  id: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+export interface UsageStats {
+  totalQuestions: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostUsd: number;
+  avgCostPerQuestion: number;
+}
+
+export function logUsage(inputTokens: number, outputTokens: number): void {
+  const inputCost = (inputTokens / 1_000_000) * ANTHROPIC_PRICING.input;
+  const outputCost = (outputTokens / 1_000_000) * ANTHROPIC_PRICING.output;
+  const totalCost = inputCost + outputCost;
+
+  getDb()
+    .prepare('INSERT INTO usage_logs (input_tokens, output_tokens, cost_usd) VALUES (?, ?, ?)')
+    .run(inputTokens, outputTokens, totalCost);
+
+  console.log(
+    `[Usage] in: ${inputTokens}, out: ${outputTokens}, cost: $${totalCost.toFixed(4)}`
+  );
+}
+
+export function getUsageStats(days = 30): UsageStats {
+  const result = getDb()
+    .prepare(`
+      SELECT
+        COUNT(*) as totalQuestions,
+        COALESCE(SUM(input_tokens), 0) as totalInputTokens,
+        COALESCE(SUM(output_tokens), 0) as totalOutputTokens,
+        COALESCE(SUM(cost_usd), 0) as totalCostUsd
+      FROM usage_logs
+      WHERE created_at > datetime('now', '-' || ? || ' days')
+    `)
+    .get(days) as {
+      totalQuestions: number;
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCostUsd: number;
+    };
+
+  return {
+    ...result,
+    avgCostPerQuestion: result.totalQuestions > 0
+      ? result.totalCostUsd / result.totalQuestions
+      : 0,
+  };
+}
+
+export function getUsageStatsByMonth(): Array<{
+  month: string;
+  questions: number;
+  cost_usd: number;
+}> {
+  return getDb()
+    .prepare(`
+      SELECT
+        strftime('%Y-%m', created_at) as month,
+        COUNT(*) as questions,
+        SUM(cost_usd) as cost_usd
+      FROM usage_logs
+      GROUP BY strftime('%Y-%m', created_at)
+      ORDER BY month DESC
+      LIMIT 12
+    `)
+    .all() as Array<{ month: string; questions: number; cost_usd: number }>;
+}
+
+export function getTodayUsage(): { questions: number; cost_usd: number } {
+  const result = getDb()
+    .prepare(`
+      SELECT
+        COUNT(*) as questions,
+        COALESCE(SUM(cost_usd), 0) as cost_usd
+      FROM usage_logs
+      WHERE date(created_at) = date('now')
+    `)
+    .get() as { questions: number; cost_usd: number };
+  return result;
 }
 
 // ============ CLEANUP ============
