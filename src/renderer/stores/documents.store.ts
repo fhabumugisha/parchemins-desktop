@@ -16,6 +16,7 @@ interface DocumentsState {
   selectDocument: (doc: Document | null) => void;
   deleteDocument: (id: number) => Promise<void>;
   openDocumentExternal: (id: number) => Promise<void>;
+  updateDocumentTitle: (id: number, title: string) => Promise<boolean>;
   search: (query: string) => Promise<void>;
   clearSearch: () => void;
 }
@@ -62,6 +63,31 @@ export const useDocumentsStore = create<DocumentsState>((set, _get) => ({
       await window.electronAPI.documents.openExternal(id);
     } catch (error) {
       set({ error: getErrorMessage(error) });
+    }
+  },
+
+  updateDocumentTitle: async (id, title) => {
+    try {
+      const result = await window.electronAPI.documents.updateTitle(id, title);
+      if (result.success) {
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === id ? { ...d, title } : d
+          ),
+          selectedDocument:
+            state.selectedDocument?.id === id
+              ? { ...state.selectedDocument, title }
+              : state.selectedDocument,
+          searchResults: state.searchResults.map((d) =>
+            d.id === id ? { ...d, title } : d
+          ),
+        }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      set({ error: getErrorMessage(error) });
+      return false;
     }
   },
 

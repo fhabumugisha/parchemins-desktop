@@ -5,6 +5,7 @@ import {
   getAllDocuments,
   getDocumentById,
   deleteDocument,
+  updateDocument,
   getCorpusStats,
   setSetting,
   getSetting,
@@ -27,6 +28,15 @@ export function registerDocumentsHandlers(): void {
   // Delete document
   ipcMain.handle(IPC_CHANNELS.DOCUMENTS_DELETE, (_, id: number) => {
     deleteDocument(id);
+    return { success: true };
+  });
+
+  // Update document title
+  ipcMain.handle(IPC_CHANNELS.DOCUMENTS_UPDATE_TITLE, (_, id: number, title: string) => {
+    if (!title?.trim()) {
+      return { success: false, error: 'Titre invalide' };
+    }
+    updateDocument(id, { title: title.trim() });
     return { success: true };
   });
 

@@ -1,4 +1,4 @@
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import {
   getSetting,
@@ -83,5 +83,11 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CREDITS_PURCHASE, (_, amount: number) => {
     const newBalance = updateCredits(amount);
     return { success: true, balance: newBalance };
+  });
+
+  // Open external URL in default browser
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_OPEN_EXTERNAL, async (_, url: string) => {
+    await shell.openExternal(url);
+    return { success: true };
   });
 }

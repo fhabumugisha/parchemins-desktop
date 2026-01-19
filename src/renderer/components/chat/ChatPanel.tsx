@@ -7,14 +7,17 @@ import { ChatInput } from './ChatInput';
 import { WelcomeMessage } from './WelcomeMessage';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { Button } from '../common/Button';
-import { AlertTriangle, Search, Settings } from 'lucide-react';
+import { ConfirmDialog } from '../common/ConfirmDialog';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { AlertTriangle, Search, Settings, MessageSquarePlus } from 'lucide-react';
 import { messages as i18n } from '@shared/messages';
 
 export function ChatPanel() {
-  const { messages: chatMessages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration } = useChatStore();
+  const { messages: chatMessages, isLoading, isApiConfigured, sendMessage, checkApiConfiguration, clearChat } = useChatStore();
   const { credits, fetchCredits } = useCreditsStore();
   const { setActiveView } = useUIStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { confirm, dialogProps } = useConfirmDialog();
 
   useEffect(() => {
     checkApiConfiguration();
@@ -34,6 +37,16 @@ export function ChatPanel() {
     }
     await sendMessage(content);
     fetchCredits();
+  };
+
+  const handleNewChat = async () => {
+    const confirmed = await confirm({
+      title: i18n.chat.newChat,
+      message: i18n.chat.confirmNewChat,
+    });
+    if (confirmed) {
+      clearChat();
+    }
   };
 
   if (!isApiConfigured) {
@@ -58,6 +71,17 @@ export function ChatPanel() {
 
   return (
     <div className="h-full flex flex-col bg-cream">
+      {chatMessages.length > 0 && (
+        <div className="flex justify-end px-6 pt-4 pb-2">
+          <button
+            onClick={handleNewChat}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted hover:text-burgundy hover:bg-burgundy/5 rounded-lg transition-colors"
+          >
+            <MessageSquarePlus className="w-4 h-4" />
+            {i18n.chat.newChat}
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-6">
         {chatMessages.length === 0 ? (
           <WelcomeMessage onSuggestionClick={handleSend} />
@@ -102,6 +126,8 @@ export function ChatPanel() {
           <ChatInput onSend={handleSend} disabled={isLoading || credits <= 0} />
         </div>
       </div>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

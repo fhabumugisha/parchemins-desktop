@@ -1,16 +1,19 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   FileText,
   Calendar,
   BookOpen,
   Trash2,
   ExternalLink,
+  Pencil,
 } from "lucide-react";
 import type { Document } from "@shared/types";
 import { useDocumentsStore } from "@/stores/documents.store";
 import { useUIStore } from "@/stores/ui.store";
 import { cn } from "@/lib/cn";
 import { messages } from "@shared/messages";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface DocumentItemProps {
   document: Document;
@@ -22,19 +25,40 @@ export function DocumentItem({ document }: DocumentItemProps) {
     selectDocument,
     deleteDocument,
     openDocumentExternal,
+    updateDocumentTitle,
   } = useDocumentsStore();
   const { setActiveView } = useUIStore();
+  const { confirm, dialogProps } = useConfirmDialog();
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(document.title);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const isSelected = selectedDocument?.id === document.id;
 
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
   const handleClick = () => {
-    selectDocument(document);
-    setActiveView("document");
+    if (!isEditing) {
+      selectDocument(document);
+      setActiveView("document");
+    }
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(messages.documents.confirmDelete(document.title))) {
+    const confirmed = await confirm({
+      title: messages.documents.deleteFromIndex,
+      message: messages.documents.confirmDelete(document.title),
+      variant: 'danger',
+      confirmLabel: messages.common.delete,
+    });
+    if (confirmed) {
       await deleteDocument(document.id);
     }
   };
@@ -42,6 +66,34 @@ export function DocumentItem({ document }: DocumentItemProps) {
   const handleOpenExternal = async (e: React.MouseEvent) => {
     e.stopPropagation();
     await openDocumentExternal(document.id);
+  };
+
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditedTitle(document.title);
+    setIsEditing(true);
+  };
+
+  const handleSaveTitle = async () => {
+    const trimmed = editedTitle.trim();
+    if (trimmed && trimmed !== document.title) {
+      await updateDocumentTitle(document.id, trimmed);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditedTitle(document.title);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveTitle();
+    } else if (e.key === "Escape") {
+      handleCancelEdit();
+    }
   };
 
   // Format date for display
@@ -76,14 +128,27 @@ export function DocumentItem({ document }: DocumentItemProps) {
         />
 
         <div className="flex-1 min-w-0">
-          <h3
-            className={cn(
-              "font-medium text-sm truncate",
-              isSelected ? "text-burgundy" : "text-gray-900"
-            )}
-          >
-            {document.title}
-          </h3>
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editedTitle}
+              onChange={(e) => setEditedTitle(e.target.value)}
+              onBlur={handleSaveTitle}
+              onKeyDown={handleKeyDown}
+              className="w-full font-medium text-sm text-gray-900 bg-white border border-burgundy/30 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-burgundy"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <h3
+              className={cn(
+                "font-medium text-sm truncate",
+                isSelected ? "text-burgundy" : "text-gray-900"
+              )}
+            >
+              {document.title}
+            </h3>
+          )}
 
           <div className="flex items-center gap-3 mt-1 text-xs text-muted">
             {document.date && (
@@ -114,6 +179,13 @@ export function DocumentItem({ document }: DocumentItemProps) {
         {/* Action buttons */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
+            onClick={handleEditClick}
+            className="p-1 hover:bg-gray-200 rounded"
+            title={messages.documents.editTitle}
+          >
+            <Pencil className="w-3.5 h-3.5 text-muted" />
+          </button>
+          <button
             onClick={handleOpenExternal}
             className="p-1 hover:bg-gray-200 rounded"
             title={messages.documents.openInApp}
@@ -129,6 +201,8 @@ export function DocumentItem({ document }: DocumentItemProps) {
           </button>
         </div>
       </div>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

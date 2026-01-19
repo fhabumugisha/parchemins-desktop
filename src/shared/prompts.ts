@@ -42,7 +42,12 @@ export const prompts = {
   /**
    * Prompt système pour le chat avec contexte de sermons
    */
-  chatSystem: (sermons: SermonContext[] = []) => {
+  chatSystem: (sermons: SermonContext[] = [], totalDocumentCount?: number) => {
+    const corpusInfo =
+      totalDocumentCount !== undefined
+        ? `INFORMATION CORPUS : L'utilisateur possède ${totalDocumentCount} sermon${totalDocumentCount > 1 ? 's' : ''} au total dans sa bibliothèque.${sermons.length > 0 ? ` Les ${sermons.length} sermons ci-dessous sont les plus pertinents pour la question posée.` : ''}\n\n`
+        : '';
+
     const contextSection =
       sermons.length > 0
         ? `CONTEXTE - Sermons pertinents de l'utilisateur :
@@ -54,7 +59,7 @@ ${formatContext(sermons)}
 
     return `Tu es un assistant pour pasteurs protestants francophones. Tu aides à rechercher, analyser et exploiter leurs archives de sermons.
 
-${contextSection}INSTRUCTIONS :
+${corpusInfo}${contextSection}INSTRUCTIONS :
 1. Base tes réponses prioritairement sur les sermons fournis quand c'est pertinent
 2. Cite le titre du sermon quand tu t'en inspires (entre guillemets)
 3. Si l'information n'est pas dans les sermons, indique-le clairement

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getCredits, updateCredits, searchDocuments, getDocumentById, getRecentDocuments } from './database.service';
+import { getCredits, updateCredits, searchDocuments, getDocumentById, getRecentDocuments, getDocumentCount } from './database.service';
 import { retrieveApiKey, hasApiKey } from './secure-storage.service';
 import type { ChatResponse } from '../../shared/types';
 import { MAX_CONTEXT_DOCUMENTS, TOKENS_PER_CREDIT } from '../../shared/constants';
@@ -59,7 +59,8 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     content: doc.content,
   }));
 
-  const systemPrompt = prompts.chatSystem(sermonContexts);
+  const totalDocumentCount = getDocumentCount();
+  const systemPrompt = prompts.chatSystem(sermonContexts, totalDocumentCount);
 
   const messages: Anthropic.MessageParam[] = [
     ...(request.conversationHistory || []).map((msg) => ({
@@ -102,7 +103,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       throw new Error(i18n.errors.rateLimitReached);
     }
     if (error instanceof Anthropic.APIError) {
-      throw new Error(`Erreur API Anthropic: ${error.message}`);
+      throw new Error(`Erreur IA: ${error.message}`);
     }
     throw error;
   }

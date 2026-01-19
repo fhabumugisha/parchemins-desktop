@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
   DOCUMENTS_GET_BY_ID: 'documents:getById',
   DOCUMENTS_DELETE: 'documents:delete',
   DOCUMENTS_OPEN_EXTERNAL: 'documents:openExternal',
+  DOCUMENTS_UPDATE_TITLE: 'documents:updateTitle',
 
   // Indexation
   INDEXER_SELECT_FOLDER: 'indexer:selectFolder',
@@ -33,6 +34,7 @@ export const IPC_CHANNELS = {
   SETTINGS_DELETE_API_KEY: 'settings:deleteApiKey',
   SETTINGS_HAS_API_KEY: 'settings:hasApiKey',
   SETTINGS_GET_APP_INFO: 'settings:getAppInfo',
+  SETTINGS_OPEN_EXTERNAL: 'settings:openExternal',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

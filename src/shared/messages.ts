@@ -9,6 +9,7 @@ export const messages = {
     loading: 'Chargement...',
     save: 'Enregistrer',
     cancel: 'Annuler',
+    confirm: 'Confirmer',
     delete: 'Supprimer',
     modify: 'Modifier',
     continue: 'Continuer',
@@ -43,6 +44,7 @@ export const messages = {
     confirmDelete: (title: string) => `Supprimer "${title}" de l'index ?`,
     openInApp: "Ouvrir dans l'application",
     sermonsCount: (count: number) => `${count} sermon${count > 1 ? 's' : ''}`,
+    editTitle: 'Modifier le titre',
   },
 
   // Dossiers
@@ -69,15 +71,15 @@ export const messages = {
 
     // Clé API
     apiKey: {
-      title: 'Clé API Anthropic',
-      configured: 'Clé API configurée',
+      title: "Clé d'accès IA",
+      configured: 'Accès configuré',
       securelyStored: 'Stockée de manière sécurisée',
-      configure: 'Configurer la clé API',
-      savedSuccess: 'Clé API enregistrée avec succès',
-      confirmDelete: 'Êtes-vous sûr de vouloir supprimer la clé API ?',
+      configure: "Configurer l'accès",
+      savedSuccess: 'Clé enregistrée avec succès',
+      confirmDelete: "Êtes-vous sûr de vouloir supprimer la clé d'accès ?",
       description:
-        "Pour utiliser l'assistant IA, vous devez configurer votre clé API Anthropic. Obtenez-en une sur",
-      configLater: 'Vous pourrez configurer la clé API plus tard dans les paramètres.',
+        "Pour utiliser l'assistant IA, vous devez configurer votre clé d'accès IA. Obtenez-en une sur",
+      configLater: "Vous pourrez configurer la clé d'accès plus tard dans les paramètres.",
     },
 
     // Affichage
@@ -106,11 +108,15 @@ export const messages = {
     about: {
       title: 'À propos',
       version: 'Version',
-      electron: 'Electron',
-      chrome: 'Chrome',
-      nodejs: 'Node.js',
       subtitle: 'Parchemins - Dialoguez avec vos sermons',
-      poweredBy: "Utilise l'API Claude d'Anthropic",
+      poweredBy: "Propulsé par l'intelligence artificielle",
+    },
+
+    // Feedback
+    feedback: {
+      title: 'Retours & Suggestions',
+      description: 'Aidez-nous à améliorer Parchemins en partageant vos retours, suggestions ou bugs rencontrés.',
+      button: 'Donner mon avis',
     },
   },
 
@@ -118,10 +124,12 @@ export const messages = {
   chat: {
     configRequired: 'Configuration requise',
     configRequiredDesc:
-      "Pour utiliser l'assistant IA, vous devez configurer votre clé API Anthropic dans les paramètres.",
+      "Pour utiliser l'assistant IA, vous devez configurer votre clé d'accès IA dans les paramètres.",
     goToSettings: 'Aller aux paramètres',
     thinking: 'Réflexion en cours...',
     sourcesUsed: 'Sources utilisées :',
+    newChat: 'Nouvelle conversation',
+    confirmNewChat: 'Commencer une nouvelle conversation ? L\'historique actuel sera effacé.',
     welcome: {
       title: 'Bienvenue, cher pasteur',
       description:
@@ -146,18 +154,18 @@ export const messages = {
         "Dialoguez avec vos sermons grâce à l'intelligence artificielle. Configurons votre application en quelques étapes.",
     },
     apiKey: {
-      title: 'Connexion à Claude',
+      title: "Connexion à l'assistant IA",
       description:
-        "Pour dialoguer avec vos sermons, l'application utilise Claude, une IA développée par Anthropic.",
-      whatIsApiKey: "Qu'est-ce qu'une clé API ?",
+        "Pour dialoguer avec vos sermons, l'application utilise une intelligence artificielle.",
+      whatIsApiKey: "Qu'est-ce qu'une clé d'accès ?",
       apiKeyExplanation:
-        "C'est comme un mot de passe qui permet à l'application de communiquer avec Claude. Vous en obtenez une gratuitement en créant un compte sur Anthropic.",
+        "C'est comme un mot de passe qui permet à l'application de communiquer avec l'assistant IA. Vous en obtenez une gratuitement en créant un compte sur le site du fournisseur.",
       steps: {
-        step1: 'Créez un compte gratuit sur console.anthropic.com',
+        step1: 'Créez un compte gratuit sur le site du fournisseur',
         step2: 'Cliquez sur "API Keys" puis "Create Key"',
         step3: 'Copiez la clé et collez-la ci-dessous',
       },
-      getKey: 'Obtenir ma clé API',
+      getKey: "Obtenir ma clé d'accès",
       skipForNow: 'Plus tard (recherche locale uniquement)',
       securityNote: 'Votre clé est stockée de manière sécurisée sur votre ordinateur uniquement.',
     },
@@ -172,8 +180,8 @@ export const messages = {
 
   // Erreurs
   errors: {
-    apiKeyNotConfigured: 'Clé API Anthropic non configurée. Veuillez la configurer dans les paramètres.',
-    apiKeyInvalid: 'Clé API invalide. Vérifiez et réessayez.',
+    apiKeyNotConfigured: "Clé d'accès IA non configurée. Veuillez la configurer dans les paramètres.",
+    apiKeyInvalid: "Clé d'accès invalide. Vérifiez et réessayez.",
     rateLimitReached: 'Limite de requêtes atteinte. Réessayez dans quelques instants.',
     genericError: 'Une erreur est survenue',
     unknownError: 'Erreur inconnue',

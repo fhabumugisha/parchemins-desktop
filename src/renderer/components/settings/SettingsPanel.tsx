@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Key, Folder, Type, Info, Shield, Trash2, CheckCircle, AlertTriangle, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Key, Folder, Type, Info, Shield, Trash2, CheckCircle, AlertTriangle, RefreshCw, X, MessageSquare } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useUIStore } from '@/stores/ui.store';
 import { useCreditsStore } from '@/stores/credits.store';
 import { useIndexerStore } from '@/stores/indexer.store';
 import { useDocumentsStore } from '@/stores/documents.store';
 import { Button } from '@/components/common/Button';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { cn } from '@/lib/cn';
 import { messages } from '@shared/messages';
+import { EXTERNAL_LINKS } from '@shared/constants';
 import { showToast } from '@/components/common/Toast';
 
 export function SettingsPanel() {
@@ -26,6 +29,7 @@ export function SettingsPanel() {
   const { credits } = useCreditsStore();
   const { selectFolder, indexFolder, forceReindex, cancelIndexing, isIndexing, progress } = useIndexerStore();
   const { fetchDocuments } = useDocumentsStore();
+  const { confirm, dialogProps } = useConfirmDialog();
 
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
@@ -55,7 +59,13 @@ export function SettingsPanel() {
   };
 
   const handleDeleteApiKey = async () => {
-    if (confirm(messages.settings.apiKey.confirmDelete)) {
+    const confirmed = await confirm({
+      title: messages.settings.apiKey.title,
+      message: messages.settings.apiKey.confirmDelete,
+      variant: 'danger',
+      confirmLabel: messages.common.delete,
+    });
+    if (confirmed) {
       await deleteApiKey();
     }
   };
@@ -86,7 +96,7 @@ export function SettingsPanel() {
 
   return (
     <div className="h-full overflow-y-auto bg-cream">
-      <div className="max-w-2xl mx-auto p-6">
+      <div className="max-w-2xl xl:max-w-3xl 2xl:max-w-4xl mx-auto p-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <button
@@ -144,7 +154,7 @@ export function SettingsPanel() {
                   rel="noopener noreferrer"
                   className="text-burgundy hover:underline"
                 >
-                  console.anthropic.com
+                  le site du fournisseur
                 </a>
               </p>
 
@@ -303,6 +313,26 @@ export function SettingsPanel() {
           </div>
         </section>
 
+        {/* Feedback Section */}
+        <section className="bg-white rounded-xl p-6 shadow-sm mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <MessageSquare className="w-5 h-5 text-burgundy" />
+            <h2 className="text-lg font-medium">{messages.settings.feedback.title}</h2>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-muted">{messages.settings.feedback.description}</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => window.electronAPI.settings.openExternal(EXTERNAL_LINKS.FEEDBACK_FORM)}
+            >
+              <MessageSquare className="w-4 h-4 mr-2" />
+              {messages.settings.feedback.button}
+            </Button>
+          </div>
+        </section>
+
         {/* About Section */}
         <section className="bg-white rounded-xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
@@ -315,15 +345,6 @@ export function SettingsPanel() {
               <p>
                 <span className="font-medium">{messages.settings.about.version} :</span> {appInfo.version}
               </p>
-              <p>
-                <span className="font-medium">{messages.settings.about.electron} :</span> {appInfo.electronVersion}
-              </p>
-              <p>
-                <span className="font-medium">{messages.settings.about.chrome} :</span> {appInfo.chromeVersion}
-              </p>
-              <p>
-                <span className="font-medium">{messages.settings.about.nodejs} :</span> {appInfo.nodeVersion}
-              </p>
             </div>
           )}
 
@@ -333,6 +354,8 @@ export function SettingsPanel() {
           </div>
         </section>
       </div>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

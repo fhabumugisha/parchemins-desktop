@@ -9,6 +9,8 @@ const electronAPI = {
     delete: (id: number): Promise<{ success: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.DOCUMENTS_DELETE, id),
     openExternal: (id: number): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC_CHANNELS.DOCUMENTS_OPEN_EXTERNAL, id),
+    updateTitle: (id: number, title: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DOCUMENTS_UPDATE_TITLE, id, title),
   },
 
   indexer: {
@@ -62,6 +64,8 @@ const electronAPI = {
       chromeVersion: string;
       nodeVersion: string;
     }> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_APP_INFO),
+    openExternal: (url: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_OPEN_EXTERNAL, url),
   },
 };
 
