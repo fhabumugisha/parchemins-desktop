@@ -1,6 +1,6 @@
 # Parchemins
 
-Application desktop pour pasteurs permettant de dialoguer avec leurs sermons via l'IA Claude.
+Application desktop pour pasteurs permettant de dialoguer avec leurs sermons via l'IA.
 
 ## Fonctionnalites
 
